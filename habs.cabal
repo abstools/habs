@@ -1,0 +1,75 @@
+name: habs
+version: 0.0.1
+
+license: BSD3
+license-file: LICENSE
+author: Nikolaos Bezirgiannis
+maintainer: Nikolaos Bezirgiannis <bezirgia@cwi.nl>
+copyright: Copyright (c) 2013-2016, Envisage Consortium
+homepage: http://abs-models.org
+bug-reports: https://github.com/abstools/habs/issues
+
+stability: provisional
+tested-with: GHC == 7.8.4, GHC == 7.10.1, GHC == 7.10.2, GHC == 7.10.3
+build-type: Simple
+cabal-version: >= 1.8
+
+category: Concurrency, Distributed Computing
+synopsis: A Haskell library to translate ABS programs to Haskell equivalent code
+description:
+  A Haskell library to translate ABS programs to Haskell equivalent code.
+  todo
+
+extra-source-files:
+  README.md
+
+source-repository head
+  type: git
+  location: git://github.com/abstools/habs.git
+  branch: master
+
+executable habs
+  main-is: habs.hs         
+  build-depends:
+    -- base<=4.6 (i.e. GHC<=7.6.3) not supported because of no `tryReadMVar`
+    base >= 4.7 && < 5,
+    habs-parser,
+    -- for outputting a Haskell AST
+    haskell-src-exts,
+    haskell-src-exts-qq == 0.7.0.1,
+    -- for intermediate datastructures (e.g. symboltable)
+    containers,
+    -- for a Reader-monad to implement local scope
+    -- for a Writer-monad to have compiler messages output
+    transformers,
+    cmdargs
+  other-modules:
+    ABS.Compiler.Firstpass.Base,
+    ABS.Compiler.Firstpass.SymbolTable,
+    ABS.Compiler.Codegen.Mod,
+    ABS.Compiler.Codegen.Dec,
+    ABS.Compiler.Codegen.Stm,
+    ABS.Compiler.Codegen.Exp,
+    ABS.Compiler.Codegen.Typ,
+    ABS.Compiler.Codegen.Pat,
+    ABS.Compiler.Utils,
+    ABS.Compiler.CmdOpt    
+  ghc-options: -Wall -fno-warn-orphans
+  hs-source-dirs: src
+
+-- TEST SUITE
+-------------
+
+test-suite golden
+  type: exitcode-stdio-1.0
+  main-is: golden.hs
+  build-depends:
+    base >= 4.7 && < 5,
+    habs-runtime,
+    habs-stdlib,
+    tasty,
+    tasty-program,
+    tasty-golden,
+    tasty-expected-failure,
+    tasty-html
+  hs-source-dirs: tests, src
