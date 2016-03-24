@@ -14,7 +14,7 @@ data CmdOpt = CmdOpt {
     , output_dir :: Maybe FilePath -- ^ In which directory to put all the Haskell translated files (.hs files)
     , create_script :: Bool -- ^ creates a helper bash script for easier invoking the ghc Haskell compiler and puts it in the outputdir
     , dump_ast :: Bool            -- ^ A flag to dump the parsed AST to stderr
-    } deriving (Show, Data)
+    } deriving (Show, Data, Typeable)
 
 cmdOptSpec :: CmdOpt
 cmdOptSpec = CmdOpt { 

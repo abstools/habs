@@ -35,7 +35,7 @@ executable habs
     base >= 4.7 && < 5,
     habs-parser,
     -- for outputting a Haskell AST
-    haskell-src-exts,
+    haskell-src-exts >= 1.17.0,
     haskell-src-exts-qq == 0.7.0.1,
     -- for intermediate datastructures (e.g. symboltable)
     containers,

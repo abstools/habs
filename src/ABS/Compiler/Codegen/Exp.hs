@@ -26,7 +26,7 @@ tFunBody (ABS.NormalFunBody pexp) params = runReader (tPureExp pexp)
 
 -- | Translating a pure expression
 tPureExp :: ( ?st::SymbolTable, ?tyvars::[ABS.UIdent]) => 
-           ABS.PureExp -> Scope HS.Exp
+           ABS.PureExp -> ExpScope HS.Exp
 
 tPureExp (ABS.If predE thenE elseE) = do
   tpred <- tPureExp predE
