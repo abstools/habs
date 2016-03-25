@@ -17,22 +17,27 @@ import Control.Monad.Trans.State (evalState, get, put, modify')
 import Control.Monad.Trans.Reader (runReader)
 import qualified Data.Map as M
 import Control.Applicative ((<|>))
+import Data.Foldable (foldlM)
 
-tMethod :: (?st :: SymbolTable) => 
-          ABS.Block                 -- the method body
-        -> [ABS.Param]               -- the method params
-        -> M.Map ABS.LIdent ABS.Type -- the fields
-        -> HS.Exp
-tMethod (ABS.Bloc astms) params fields = evalState (let ?fields = fields 
-                                                     in HS.Do . concat <$> mapM tStm astms) -- fixed fields passed as an implicit param
-                                         [M.fromList (map (\ (ABS.Par t i) -> (i,t)) params)] -- first scope level is the formal params
+tMethod :: (?st :: SymbolTable) => ABS.Block -> [ABS.Param] -> M.Map ABS.LIdent ABS.Type -> String -> HS.Exp
+tMethod (ABS.Bloc mbody) mparams fields cname = evalState (let ?fields = fields  -- fixed fields passed as an implicit param
+                                                               ?cname = cname    -- className needed for field pattern-matching
+                                                             in HS.Do . concat <$> mapM tStm mbody)
+                                          [M.fromList (map (\ (ABS.Par t i) -> (i,t)) mparams)] -- first scope level is the formal params
 
-tStm (ABS.AnnStm _ (ABS.SDec t i@(ABS.LIdent (p,n)))) =  case t of
+-- | translating 1 statement
+tStm (ABS.AnnStm _ (ABS.SBlock astms)) = do
+  modify' (M.empty:)            -- add level
+  tstms <- mapM tStm astms
+  modify' tail                  -- remove level
+  pure [HS.Qualifier $ HS.Do $ concat tstms]
+
+tStm (ABS.AnnStm _ (ABS.SDec t i@(ABS.LIdent (p,n)))) = case t of
 
   ABS.TGen (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Fut"))])  _ -> do   -- it is an unitialized future (set to newEmptyMVar)
       addToScope t i
       pure [HS.Generator noLoc 
-                   (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (tType t))   -- f :: IORef (Fut a) <- emptyFuture
+                   (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef") (tType t)))   -- f :: IORef (Fut a) <- emptyFuture
                    [hs| newIORef =<< emptyFuture |]]
 
   ABS.TSimple qtyp -> let   -- it may be an object (set to null) or foreign (set to undefined)
@@ -45,7 +50,7 @@ tStm (ABS.AnnStm _ (ABS.SDec t i@(ABS.LIdent (p,n)))) =  case t of
                           Interface _ _ -> do
                                           addToScope t i
                                           pure [HS.Generator noLoc 
-                                                      (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (tType t)) -- o :: IORef Interf <- null
+                                                      (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef") (tType t))) -- o :: IORef Interf <- null
                                                       [hs| newIORef null |] ]
                           Foreign -> do
                             addToScope t i
@@ -57,7 +62,9 @@ tStm (ABS.AnnStm _ (ABS.SDec t i@(ABS.LIdent (p,n)))) =  case t of
 
 tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) e)) = do
   addToScope t i
-  pure [ HS.Generator noLoc (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (tType t)) [hs| null |] ]
+  pure [ HS.Generator noLoc 
+               (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef") (tType t))) 
+               [hs| newIORef |] ]
 
 tStm (ABS.AnnStm _ (ABS.SAss i e)) = undefined
 
@@ -87,17 +94,114 @@ tStm (ABS.AnnStm _ (ABS.SIfElse pexp stmThen stmElse)) = do
        , HS.Qualifier $ [hs| if if' then $tthen else $telse |] ]
 
 
-tStm (ABS.AnnStm _ (ABS.SBlock astms)) = do
-  modify' (M.empty:)            -- add level
-  tstms <- mapM tStm astms
-  modify' tail                  -- remove level
-  pure [HS.Qualifier $ HS.Do $ concat tstms]
+-- decompose await (g1 && g2) to await g1; await g2
+tStm (ABS.AnnStm a (ABS.SAwait (ABS.AndGuard ag1 ag2))) = 
+  (++) <$> tStm (ABS.AnnStm a (ABS.SAwait ag1)) <*> tStm (ABS.AnnStm a (ABS.SAwait ag2))
 
--- helpers
+tStm (ABS.AnnStm _ (ABS.SAwait (ABS.FutGuard (ABS.LIdent (_, fname))))) = do
+  -- TODO: check if it is in scope
+  pure [HS.Qualifier [hs| awaitFuture' =<< $(HS.Var $ HS.UnQual $ HS.Ident fname) |]]
 
+-- currently, no solution to the cosimo problem
+tStm (ABS.AnnStm _ (ABS.SAwait (ABS.FutFieldGuard (ABS.LIdent (_, fname))))) = do
+  let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ fname ++ "'" ++ ?cname
+  pure [HS.Qualifier [hs| awaitFuture' . $fieldFun =<< readIORef this |]]
+
+tStm (ABS.AnnStm _ (ABS.SAwait (ABS.ExpGuard pexp))) = do
+  pure [HS.Qualifier [hs| awaitBool' TODO |]]
+
+-- (EFFECTFUL) EXPRESSIONS in statement world
+---------------------------------------------
+
+-- | lifting pure expressions into statement world
 tPureExpLifted pexp = do
   stmScope <- get
   pure $ runReader (let ?tyvars = [] in tPureExp pexp) (M.unions stmScope)
+
+tExp (ABS.ExpP pexp) = tPureExpLifted pexp
+tExp (ABS.ExpE eexp) = tEffExp eexp
+
+tEffExp (ABS.New qcname args) = do
+      let (q, cname) = splitQType qcname
+          smartCon = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "smart'" ++ cname
+          initFun = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init'" ++ cname
+      initApplied <- foldlM
+                    (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+                    initFun
+                    args
+      pure [hs| new $smartCon $initApplied |]
+
+tEffExp (ABS.NewLocal qcname args) = do
+      let (q, cname) = splitQType qcname
+          smartCon = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "smart'" ++ cname
+          initFun = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init'" ++ cname
+      initApplied <- foldlM
+                    (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+                    initFun
+                    args
+      pure [hs| new $smartCon $initApplied this |]
+
+-- limits: PVar, this, null can be compiled
+-- other general pexps is limitation
+tEffExp (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args) = case pexp of
+  ABS.EVar ident -> do
+    typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
+    case typ of
+      Just (ABS.TSimple qtyp) -> do -- only interface type
+          mapplied <- foldlM
+                     (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+                     (HS.Var $ HS.UnQual $ HS.Ident mname)
+                     args
+          let (prefix, iident) = splitQType qtyp
+              iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+          pure $ HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| obj' <.> $mapplied |]
+      Nothing -> errorPos p "cannot find variable"
+      _ -> errorPos p "invalid object callee type"
+  ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
+  _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
+
+tEffExp (ABS.ThisSyncMethCall (ABS.LIdent (_,mname)) args) = do
+  mapplied <- foldlM
+             (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+             (HS.Var $ HS.UnQual $ HS.Ident mname)
+             args
+  pure [hs| this <..> $mapplied |]
+
+-- limits: PVar, this, null can be compiled
+-- other general pexps is limitation
+tEffExp (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args) = case pexp of
+  ABS.EVar ident -> do
+    typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
+    case typ of
+      Just (ABS.TSimple qtyp) -> do -- only interface type
+          mapplied <- foldlM
+                     (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+                     (HS.Var $ HS.UnQual $ HS.Ident mname)
+                     args
+          let (prefix, iident) = splitQType qtyp
+              iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+          pure $ HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| obj' <!> $mapplied |]
+      Nothing -> errorPos p "cannot find variable"
+      _ -> errorPos p "invalid object callee type"
+  ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
+  _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
+  
+tEffExp (ABS.ThisAsyncMethCall (ABS.LIdent (_,mname)) args) = do
+  mapplied <- foldlM
+             (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+             (HS.Var $ HS.UnQual $ HS.Ident mname)
+             args
+  pure [hs| this <!> $mapplied |]
+
+-- TODO: osync optimization
+
+tEffExp (ABS.Get pexp) = do
+  texp <- tPureExpLifted pexp
+  pure [hs| get =<< $texp |] 
+
+
+-- HELPERS
+----------
 
 addToScope :: ABS.Type -> ABS.LIdent -> StmScope ()
 addToScope typ var@(ABS.LIdent (p,pid)) = do

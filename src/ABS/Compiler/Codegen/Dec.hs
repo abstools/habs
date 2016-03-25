@@ -49,12 +49,12 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
 
   -- An ADT-record which contains the fields of the class
   HS.DataDecl noLoc HS.DataType [] (HS.Ident clsName) [] 
-        [HS.QualConDecl noLoc [] [] $ HS.RecDecl (HS.Ident clsName) (map (\ ((ABS.LIdent (_,i)), t) -> ([HS.Ident $ headToLower clsName ++ "'" ++ i], 
+        [HS.QualConDecl noLoc [] [] $ HS.RecDecl (HS.Ident clsName) (map (\ ((ABS.LIdent (_,i)), t) -> ([HS.Ident $  i ++ "'" ++ clsName], 
                                                                                                                 tType t -- TODO: bang if prim type
                                                                                                       )) (M.toAscList fields))]  []
 
   : -- A smart-constructor for pure fields
-  HS.FunBind [HS.Match noLoc (HS.Ident $ headToLower clsName ++ "'")
+  HS.FunBind [HS.Match noLoc (HS.Ident $ "smart'" ++ clsName)
     -- the class params serve as input-args to the smart constructor
     (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) cparams) Nothing 
     -- rhs
@@ -65,15 +65,15 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                    -- Field f = val;
                    ABS.FieldAssignClassBody _t (ABS.LIdent (_, fid)) pexp -> do
                       texp <- tPureExp pexp
-                      return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ headToLower clsName ++ "'" ++ fid) texp : acc
+                      return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) texp : acc
 
                    -- Field f;
                    ABS.FieldClassBody t (ABS.LIdent (p,fid)) ->  case t of
                                -- it is an unitialized future (abs allows this)
                                ABS.TGen (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Fut"))])  _ -> 
-                                   return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ headToLower clsName ++ "'" ++ fid) [hs| emptyFuture |] : acc
+                                   return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) [hs| emptyFuture |] : acc
                                -- it may be an object (to be set to null) or foreign (to be set to undefined)
-                               ABS.TSimple qtyp -> return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ headToLower clsName ++ "'" ++ fid) 
+                               ABS.TSimple qtyp -> return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
                                                   (let (prefix, ident) = splitQType qtyp
                                                        Just (SV symbolType _) = if null prefix
                                                                                then M.lookup (SN ident Nothing) ?st
@@ -85,7 +85,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                                         _ -> errorPos p "A field must be initialised if it is not of a reference type"
                                                   ) : acc
                                -- it may be foreign (to be set to undefined)
-                               ABS.TGen qtyp _ -> return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ headToLower clsName ++ "'" ++ fid) 
+                               ABS.TGen qtyp _ -> return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
                                                   (let (prefix, ident) = splitQType qtyp
                                                        Just (SV symbolType _) = if null prefix
                                                                                 then M.lookup (SN ident Nothing) ?st
@@ -110,8 +110,8 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
     ABS.NoBlock -> [] 
     ABS.JustBlock _ block -> let initName = "init'" ++ clsName 
                             in if "run" `M.member` aloneMethods
-                               then [ [dec| __initName__ this = $(tMethod block [] fields) >> this <!!> run |] ]
-                               else [ [dec| __initName__ this = $(tMethod block [] fields) |] ]
+                               then [ [dec| __initName__ this = $(tMethod block [] fields clsName) >> this <!!> run |] ]
+                               else [ [dec| __initName__ this = $(tMethod block [] fields clsName) |] ]
 
   ++  -- The direct&indirect instances for interfaces
   concatMap (\ qtyp -> let 
@@ -130,7 +130,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                                        -- method params
                                                        (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [HS.PVar $ HS.Ident "this"])
                                                        Nothing 
-                                                       (HS.UnGuardedRhs $ tMethod block mparams fields) (Just aloneWhereClause)])
+                                                       (HS.UnGuardedRhs $ tMethod block mparams fields clsName) (Just aloneWhereClause)])
                 ) directMethods)
     -- the indirect instances
     : M.foldlWithKey (\ acc (SN n _) indirectMethods ->
@@ -142,7 +142,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                                                              -- method params
                                                                              (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [HS.PVar $ HS.Ident "this"])
                                                                              Nothing 
-                                                                             (HS.UnGuardedRhs $ tMethod block mparams fields) (Just aloneWhereClause)])
+                                                                             (HS.UnGuardedRhs $ tMethod block mparams fields clsName) (Just aloneWhereClause)])
                                       ) indirectMethods) : acc
                      ) [] extends
             ) impls
@@ -153,7 +153,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                          -- method params
                          (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [HS.PVar $ HS.Ident "this"])
                          Nothing 
-                         (HS.UnGuardedRhs $ tMethod block mparams fields) Nothing]) )
+                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName) Nothing]) )
           (M.assocs aloneMethods)
 
   where
@@ -192,7 +192,7 @@ tDecl (ABS.TypeDecl (ABS.UIdent (_,tid)) typ) = [ [dec| type U_tid_U = $(tType t
 -- Type synonyms with variables
 tDecl (ABS.TypeParDecl (ABS.UIdent (_,tid)) tyvars typ) = [HS.TypeDecl noLoc (HS.Ident tid) 
                                                                  (map (\ (ABS.UIdent (_,varid)) -> 
-                                                                           HS.UnkindedVar $ HS.Ident $ headToLower $ varid)
+                                                                           HS.UnkindedVar $ HS.Ident $ headToLower varid)
                                                                   tyvars)
                                                                  (tTypeOrTyVar tyvars typ)
                                                           ]
@@ -201,7 +201,7 @@ tDecl (ABS.TypeParDecl (ABS.UIdent (_,tid)) tyvars typ) = [HS.TypeDecl noLoc (HS
 tDecl (ABS.DataParDecl (ABS.UIdent (_,tid)) tyvars constrs) =  HS.DataDecl noLoc HS.DataType [] (HS.Ident tid) 
 
           -- Type Variables
-          (map (\ (ABS.UIdent (_,varid)) -> HS.UnkindedVar $ HS.Ident $ headToLower $  varid) tyvars)
+          (map (\ (ABS.UIdent (_,varid)) -> HS.UnkindedVar $ HS.Ident $ headToLower varid) tyvars)
 
           -- Data Constructors
           (map (\case
