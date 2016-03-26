@@ -25,12 +25,9 @@ tMethod (ABS.Bloc mbody) mparams fields cname = evalState (let ?fields = fields 
                                                              in HS.Do . concat <$> mapM tStm mbody)
                                           [M.fromList (map (\ (ABS.Par t i) -> (i,t)) mparams)] -- first scope level is the formal params
 
--- | translating 1 statement
-tStm (ABS.AnnStm _ (ABS.SBlock astms)) = do
-  modify' (M.empty:)            -- add level
-  tstms <- mapM tStm astms
-  modify' tail                  -- remove level
-  pure [HS.Qualifier $ HS.Do $ concat tstms]
+
+--- VARIABLE-ASSIGNMENT STATEMENTS
+-------------------------
 
 tStm (ABS.AnnStm _ (ABS.SDec t i@(ABS.LIdent (p,n)))) = case t of
 
@@ -70,29 +67,10 @@ tStm (ABS.AnnStm _ (ABS.SAss i e)) = undefined
 
 tStm (ABS.AnnStm _ (ABS.SFieldAss i e)) = undefined
 
-tStm (ABS.AnnStm _ (ABS.SSkip)) = pure []
+-- CONCURRENCY STATEMENTS
+-------------------------
 
 tStm (ABS.AnnStm _ ABS.SSuspend) = pure [HS.Qualifier [hs| suspend this |]]
-
-tStm (ABS.AnnStm a (ABS.SReturn e)) = tStm (ABS.AnnStm a (ABS.SExp e))
-
-tStm (ABS.AnnStm _ (ABS.SThrow pexp)) = do
-  texp <- tPureExpLifted pexp
-  pure [HS.Qualifier [hs| throw $texp |]]
-
-tStm (ABS.AnnStm _ (ABS.SIf pexp stmThen)) = do
-  texp <- tPureExpLifted pexp
-  [HS.Qualifier tthen] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmThen])
-  pure [ HS.Generator noLoc (HS.PVar $ HS.Ident "when'") texp
-       , HS.Qualifier $ [hs| when if' $tthen |] ]
-
-tStm (ABS.AnnStm _ (ABS.SIfElse pexp stmThen stmElse)) = do
-  texp <- tPureExpLifted pexp
-  [HS.Qualifier tthen] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmThen])
-  [HS.Qualifier telse] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmElse])
-  pure [ HS.Generator noLoc (HS.PVar $ HS.Ident "if'") texp
-       , HS.Qualifier $ [hs| if if' then $tthen else $telse |] ]
-
 
 -- decompose await (g1 && g2) to await g1; await g2
 tStm (ABS.AnnStm a (ABS.SAwait (ABS.AndGuard ag1 ag2))) = 
@@ -107,26 +85,81 @@ tStm (ABS.AnnStm _ (ABS.SAwait (ABS.FutFieldGuard (ABS.LIdent (_, fname))))) = d
   let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ fname ++ "'" ++ ?cname
   pure [HS.Qualifier [hs| awaitFuture' . $fieldFun =<< readIORef this |]]
 
+-- note to self: await b1&&b2 maybe not equal with await b1&b2;
 tStm (ABS.AnnStm _ (ABS.SAwait (ABS.ExpGuard pexp))) = do
   pure [HS.Qualifier [hs| awaitBool' TODO |]]
+
+-- CONTROL FLOW STATEMENTS
+--------------------------
+
+tStm (ABS.AnnStm _ (ABS.SWhile pexp stmBody)) = do
+  texp <- liftPure $ let ?tyvars = [] in tPureExp pexp
+  [HS.Qualifier tbody] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmBody])
+  pure [HS.Qualifier [hs| while $texp $tbody |] ]              
+
+tStm (ABS.AnnStm _ (ABS.SIf pexp stmThen)) = do
+  texp <- liftPure $ let ?tyvars = [] in tPureExp pexp
+  [HS.Qualifier tthen] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmThen])
+  pure [ HS.Generator noLoc (HS.PVar $ HS.Ident "when'") texp
+       , HS.Qualifier $ [hs| when if' $tthen |] ]
+
+tStm (ABS.AnnStm _ (ABS.SIfElse pexp stmThen stmElse)) = do
+  texp <- liftPure $ let ?tyvars = [] in tPureExp pexp
+  [HS.Qualifier tthen] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmThen])
+  [HS.Qualifier telse] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmElse])
+  pure [ HS.Generator noLoc (HS.PVar $ HS.Ident "if'") texp
+       , HS.Qualifier $ [hs| if if' then $tthen else $telse |] ]
+
+-- CLASSIC IMPERATIVE STATEMENTS
+--------------------------------
+
+tStm (ABS.AnnStm _ (ABS.SBlock astms)) = do
+  modify' (M.empty:)            -- add level
+  tstms <- mapM tStm astms
+  modify' tail                  -- remove level
+  pure [HS.Qualifier $ HS.Do $ concat tstms]
+
+tStm (ABS.AnnStm a (ABS.SReturn e)) = tStm (ABS.AnnStm a (ABS.SExp e))
+
+tStm (ABS.AnnStm _ (ABS.SPrint pexp)) = do
+  texp <- liftPure $ let ?tyvars = [] in tPureExp pexp
+  pure [HS.Qualifier [hs| println $texp |]]
+
+tStm (ABS.AnnStm _ (ABS.SSkip)) = pure []
+
+-- expression as a standalone statement (i.e. ignoring its return result)
+tStm (ABS.AnnStm _ (ABS.SExp e)) = do
+  texp <- tExp e
+  pure [HS.Qualifier texp]      -- todo: pass a standalone flag here
+
+-- EXCEPTION STATEMENTS
+-------------------------
+
+tStm (ABS.AnnStm _ (ABS.SAssert pexp)) = do
+  texp <- liftPure (let ?tyvars = [] in tPureExp pexp)
+  pure [HS.Qualifier [hs| assert =<< $texp |] ]
+
+tStm (ABS.AnnStm _ (ABS.SThrow pexp)) = do
+  texp <- liftPure $ let ?tyvars = [] in tPureExp pexp
+  pure [HS.Qualifier [hs| throw $texp |]]
+
+tStm (ABS.AnnStm _ (ABS.STryCatchFinally try_stm cbranches mfinally)) = undefined
+
 
 -- (EFFECTFUL) EXPRESSIONS in statement world
 ---------------------------------------------
 
 -- | lifting pure expressions into statement world
-tPureExpLifted pexp = do
-  stmScope <- get
-  pure $ runReader (let ?tyvars = [] in tPureExp pexp) (M.unions stmScope)
 
-tExp (ABS.ExpP pexp) = tPureExpLifted pexp
+tExp (ABS.ExpP pexp) = liftPure (let ?tyvars = [] in tPureExp pexp)
 tExp (ABS.ExpE eexp) = tEffExp eexp
 
 tEffExp (ABS.New qcname args) = do
       let (q, cname) = splitQType qcname
           smartCon = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "smart'" ++ cname
           initFun = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init'" ++ cname
-      initApplied <- foldlM
-                    (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+      initApplied <- liftPure $ let ?tyvars = [] in foldlM
+                    (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                     initFun
                     args
       pure [hs| new $smartCon $initApplied |]
@@ -135,8 +168,8 @@ tEffExp (ABS.NewLocal qcname args) = do
       let (q, cname) = splitQType qcname
           smartCon = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "smart'" ++ cname
           initFun = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init'" ++ cname
-      initApplied <- foldlM
-                    (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+      initApplied <- liftPure $ let ?tyvars = [] in foldlM
+                    (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                     initFun
                     args
       pure [hs| new $smartCon $initApplied this |]
@@ -148,8 +181,8 @@ tEffExp (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args) = case pexp of
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
     case typ of
       Just (ABS.TSimple qtyp) -> do -- only interface type
-          mapplied <- foldlM
-                     (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+          mapplied <- liftPure $ let ?tyvars = [] in foldlM
+                     (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                      (HS.Var $ HS.UnQual $ HS.Ident mname)
                      args
           let (prefix, iident) = splitQType qtyp
@@ -161,8 +194,8 @@ tEffExp (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args) = case pexp of
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
 
 tEffExp (ABS.ThisSyncMethCall (ABS.LIdent (_,mname)) args) = do
-  mapplied <- foldlM
-             (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+  mapplied <- liftPure $ let ?tyvars = [] in foldlM
+             (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
              (HS.Var $ HS.UnQual $ HS.Ident mname)
              args
   pure [hs| this <..> $mapplied |]
@@ -174,8 +207,8 @@ tEffExp (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args) = case pexp of
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
     case typ of
       Just (ABS.TSimple qtyp) -> do -- only interface type
-          mapplied <- foldlM
-                     (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+          mapplied <- liftPure $ let ?tyvars = [] in foldlM
+                     (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                      (HS.Var $ HS.UnQual $ HS.Ident mname)
                      args
           let (prefix, iident) = splitQType qtyp
@@ -187,8 +220,8 @@ tEffExp (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args) = case pexp of
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
   
 tEffExp (ABS.ThisAsyncMethCall (ABS.LIdent (_,mname)) args) = do
-  mapplied <- foldlM
-             (\ acc nextArg -> HS.App acc <$> tPureExpLifted nextArg)
+  mapplied <- liftPure $ let ?tyvars = [] in foldlM
+             (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
              (HS.Var $ HS.UnQual $ HS.Ident mname)
              args
   pure [hs| this <!> $mapplied |]
@@ -196,7 +229,7 @@ tEffExp (ABS.ThisAsyncMethCall (ABS.LIdent (_,mname)) args) = do
 -- TODO: osync optimization
 
 tEffExp (ABS.Get pexp) = do
-  texp <- tPureExpLifted pexp
+  texp <- liftPure (let ?tyvars = [] in tPureExp pexp)
   pure [hs| get =<< $texp |] 
 
 
@@ -209,3 +242,11 @@ addToScope typ var@(ABS.LIdent (p,pid)) = do
   if (any (\ scope -> var `M.member` scope) restscopes)
     then errorPos p $ pid ++ " already defined in an outer scope"
     else put $ M.insertWith (const $ const $ errorPos p $ pid ++ " already defined in this scope") var typ topscope  : restscopes
+
+
+-- | lifting pure expressions into statement world
+liftPure :: (?st :: SymbolTable, ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String)
+           => ExpScope HS.Exp -> StmScope HS.Exp
+liftPure pexp = do
+  stmScope <- get
+  pure $ runReader pexp (M.unions stmScope)
