@@ -42,6 +42,9 @@ executable habs
     -- for a Reader-monad to implement local scope
     -- for a Writer-monad to have compiler messages output
     transformers,
+    -- for filepath manipulation when spitting .hs files
+    filepath,
+    directory,
     cmdargs
   other-modules:
     ABS.Compiler.Firstpass.Base,
