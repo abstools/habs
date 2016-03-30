@@ -12,20 +12,20 @@ import ABS.Compiler.Firstpass.Base (SymbolTable)
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
-import qualified Data.Map as M (fromList, insert, lookup)
+import qualified Data.Map as M (Map, fromList, insert, member)
 import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
 
 -- | Translating the body of a pure function
-tFunBody :: ( ?st::SymbolTable, ?tyvars::[ABS.UIdent]) => 
+tFunBody :: ( ?st::SymbolTable, ?tyvars::[ABS.UIdent], ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 
            ABS.FunBody -> [ABS.Param] -> HS.Exp
 tFunBody ABS.BuiltinFunBody _params = [hs| undefined |] -- builtin turned to undefined
 tFunBody (ABS.NormalFunBody pexp) params = runReader (tPureExp pexp) 
                                            (M.fromList $ map (\ (ABS.Par t i) -> (i,t)) params) -- initial function scope is the formal params
 
 -- | Translating a pure expression
-tPureExp :: ( ?st::SymbolTable, ?tyvars::[ABS.UIdent]) => 
+tPureExp :: ( ?st::SymbolTable, ?tyvars::[ABS.UIdent], ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 
            ABS.PureExp -> ExpScope HS.Exp
 
 tPureExp (ABS.If predE thenE elseE) = do
@@ -163,9 +163,11 @@ tPureExp (ABS.EParamConstr qtyp args) =
 
 tPureExp (ABS.EVar var@(ABS.LIdent (p,pid))) = do
      scope <- ask
-     pure $ case M.lookup var scope of
-       Nothing ->  errorPos p $ pid ++ " not in scope"
-       Just _ -> HS.Var $ HS.UnQual $ HS.Ident pid
+     pure $ if var `M.member` scope
+            then HS.Var $ HS.UnQual $ HS.Ident pid
+            else if var `M.member` ?fields
+                 then HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname
+                 else errorPos p $ pid ++ " not in scope"
                 -- HS.Paren $ (if isInterface t
                 --             then HS.App (HS.Var $ identI "up") -- upcasting if it is of a class type
                 --             else id) 
@@ -175,11 +177,15 @@ tPureExp (ABS.EVar var@(ABS.LIdent (p,pid))) = do
 --     return $ HS.Var $ HS.Qual (HS.ModuleName $ joinTTypeIds tsegs) $ HS.Ident pid
 --     -- we tread it as pure for now
 
-tPureExp (ABS.EThis (ABS.LIdent (_, field))) = pure $ HS.Var $ HS.UnQual $ HS.Ident $ "this'" ++ field
+tPureExp (ABS.EThis (ABS.LIdent (_, field))) = if null ?cname
+                                               then error "cannot access fields in pure context"
+                                               else pure $ HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname
 tPureExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LStr str ->  HS.Lit $ HS.String str
                                    ABS.LInt i ->  HS.Lit $ HS.Int i
-                                   ABS.LThis -> [hs| (up this) |]
+                                   ABS.LThis -> if null ?cname
+                                               then error "cannot call this in pure context"
+                                               else [hs| (up this) |]
                                    ABS.LNull -> [hs| (up null) |]
                                    ABS.LThisDC -> [hs| thisDC |]
 

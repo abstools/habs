@@ -39,7 +39,10 @@ tDecl (ABS.FunParDecl fReturnTyp (ABS.LIdent (_,fid)) tyvars params body) = [
                                          (\ exp -> case fReturnTyp of
                                                     ABS.TUnderscore -> exp -- infer the return type
                                                     _ -> HS.ExpTypeSig noLoc exp (tTypeOrTyVar tyvars fReturnTyp)) -- wrap the return exp with an explicit type annotation
-                                         (let ?tyvars = tyvars in tFunBody body params)
+                                         (let ?tyvars = tyvars
+                                              ?cname = []
+                                              ?fields = M.empty
+                                          in tFunBody body params)
                                    )  Nothing ] ]
 
 
@@ -60,6 +63,8 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
     -- rhs
     (HS.UnGuardedRhs $ HS.RecConstr (HS.UnQual $ HS.Ident clsName) $
      let ?tyvars = []
+         ?cname = clsName
+         ?fields = fields
      in runReader (foldlM (\ acc -> \case
                            
                    -- Field f = val;

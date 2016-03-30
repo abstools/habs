@@ -41,12 +41,12 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                   ABS.NoBlock -> id) $ concatMap tExport exports)
 
        -- fixed IMPORTS HEADER 
-       ([ HS.ImportDecl { HS.importModule = HS.ModuleName "Lang.ABS.Runtime"
+       ([ HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.Runtime"
                         , HS.importQualified = False
                         , HS.importAs = Nothing
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
                         }
-        , HS.ImportDecl { HS.importModule = HS.ModuleName "Lang.ABS.StdLib"
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.StdLib"
                         , HS.importQualified = False
                         , HS.importAs = Nothing
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
@@ -54,7 +54,7 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.IORef" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
-                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "readIORef"), HS.IVar (HS.Ident "writeIORef")])
+                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "newIORef"), HS.IVar (HS.Ident "readIORef"), HS.IVar (HS.Ident "writeIORef")])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad.IO.Class" 
@@ -169,6 +169,6 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
       tMain :: (?st::SymbolTable) => ABS.MaybeBlock -> [HS.Decl]
       tMain ABS.NoBlock = []
       tMain (ABS.JustBlock _ block) = [
-        [dec| main = $(tMethod block [] M.empty "") -- no params, no fields, no-class-name
+        [dec| main = main_is' (\ this -> $(tMethod block [] M.empty "")) -- no params, no fields, empty class-name
             |] ]
 

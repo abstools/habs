@@ -13,6 +13,9 @@ dist/
 cabal.sandbox.config
 cabal.config
 
+# ABS
+gen/
+
 # OTHER
 *_flymake.abs
 *_flymake.hs

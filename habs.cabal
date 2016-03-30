@@ -57,7 +57,7 @@ executable habs
     ABS.Compiler.Codegen.Pat,
     ABS.Compiler.Utils,
     ABS.Compiler.CmdOpt    
-  ghc-options: -Wall -fno-warn-orphans
+  ghc-options: -Wall -fno-warn-orphans -fno-ignore-asserts
   hs-source-dirs: src
 
 -- TEST SUITE
