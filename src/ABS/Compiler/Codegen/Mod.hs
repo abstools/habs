@@ -51,6 +51,12 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                         , HS.importAs = Nothing
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
                         } 
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Applicative" 
+                        , HS.importQualified = True
+                        , HS.importAs = Just (HS.ModuleName "I'")
+                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "pure")])
+                        , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                        }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.IORef" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
@@ -168,7 +174,6 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                                                       
       tMain :: (?st::SymbolTable) => ABS.MaybeBlock -> [HS.Decl]
       tMain ABS.NoBlock = []
-      tMain (ABS.JustBlock _ block) = [
-        [dec| main = main_is' (\ this -> $(tMethod block [] M.empty "")) -- no params, no fields, empty class-name
-            |] ]
+      tMain (ABS.JustBlock _ block) = [[dec| main = main_is' (\ this -> $(tMethod block [] M.empty "")) |]]-- no params, no fields, empty class-name
+
 

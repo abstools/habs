@@ -7,6 +7,7 @@ import ABS.Compiler.Utils
 import ABS.Compiler.Codegen.Base
 import ABS.Compiler.Firstpass.Base
 import ABS.Compiler.Codegen.Exp (tPureExp)
+import ABS.Compiler.Codegen.StmExp (tStmExp)
 import ABS.Compiler.Codegen.Typ
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
@@ -14,7 +15,7 @@ import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 
 import Control.Monad.Trans.State (evalState, get, put, modify')
-import Control.Monad.Trans.Reader (runReader)
+import Control.Monad.Trans.Reader (runReader, ask, local)
 import qualified Data.Map as M
 import Control.Applicative ((<|>))
 import Data.Foldable (foldlM)
@@ -175,25 +176,46 @@ tExp (ABS.ExpE eexp) isAlone = tEffExp eexp isAlone
 tExp (ABS.ExpP pexp) _ = liftPure (let ?tyvars = [] in tPureExp pexp)
 
 
+tEffExp :: ( ?st::SymbolTable, ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 
+          ABS.EffExp -> Bool -> StmScope HS.Exp
 tEffExp (ABS.New qcname args) _ = do
-      let (q, cname) = splitQType qcname
+      (locals,fields) <- unzip <$> mapM depends args
+      let maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this' -> $e) =<< readIORef this|])
+          (q, cname) = splitQType qcname
           smartCon = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "smart'" ++ cname
           initFun = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init'" ++ cname
-      initApplied <- liftPure $ let ?tyvars = [] in foldlM
-                    (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                    initFun
-                    args
-      pure [hs| new $smartCon $initApplied |]
-
+      if null locals
+        then let initApplied = runReader (let ?tyvars = [] in foldlM
+                                                        (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                        initFun
+                                                        args) M.empty
+             in pure $ maybeWrapThis [hs| new $smartCon $initApplied |]
+        else do
+          scope <- M.unions <$> get
+          let initApplied = runReader (let ?vars = scope in foldlM
+                                                   (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
+                                                   initFun
+                                                   args) M.empty
+          pure $ maybeWrapThis [hs| (new $smartCon) =<< $initApplied |]
 tEffExp (ABS.NewLocal qcname args) _ = do
-      let (q, cname) = splitQType qcname
+      (locals,fields) <- unzip <$> mapM depends args
+      let maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this' -> $e) =<< readIORef this|])
+          (q, cname) = splitQType qcname
           smartCon = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "smart'" ++ cname
           initFun = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init'" ++ cname
-      initApplied <- liftPure $ let ?tyvars = [] in foldlM
-                    (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                    initFun
-                    args
-      pure [hs| newlocal' $smartCon $initApplied this |]
+      if null locals
+         then let initApplied = runReader (let ?tyvars = [] in foldlM
+                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                         initFun
+                                                         args) M.empty
+              in pure $ maybeWrapThis [hs| newlocal' $smartCon $initApplied this |]
+         else do
+           scope <- M.unions <$> get
+           let initApplied = runReader (let ?vars = scope in foldlM
+                                                    (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
+                                                    initFun
+                                                    args) M.empty
+           pure $ maybeWrapThis [hs| (newlocal' this $smartCon) =<< $initApplied |]
 
 -- limits: PVar, this, null can be compiled
 -- other general pexps is limitation
@@ -202,24 +224,44 @@ tEffExp (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args) _ = case pexp of
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
     case typ of
       Just (ABS.TSimple qtyp) -> do -- only interface type
-          mapplied <- liftPure $ let ?tyvars = [] in foldlM
-                     (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                     (HS.Var $ HS.UnQual $ HS.Ident mname)
-                     args
-          let (prefix, iident) = splitQType qtyp
+          (locals,fields) <- unzip <$> mapM depends args
+          let maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this' -> $e) =<< readIORef this|])
+              (prefix, iident) = splitQType qtyp
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
-          pure $ HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj''"]] [hs| obj'' <.> $mapplied |]
+          if null locals
+            then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                         (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                                         args) M.empty
+                 in pure $ maybeWrapThis $ HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj''"]] [hs| obj'' <.> $mapplied |]
+            else do
+              scope <- M.unions <$> get
+              let mapplied = runReader (let ?vars = scope in foldlM
+                                                    (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
+                                                    (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                                    args) M.empty
+              pure $ maybeWrapThis $ HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj''"]] [hs| (obj'' <.>) =<< $mapplied |]
       Nothing -> errorPos p "cannot find variable"
       _ -> errorPos p "invalid object callee type"
   ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
 
 tEffExp (ABS.ThisSyncMethCall (ABS.LIdent (_,mname)) args) _ = do
-  mapplied <- liftPure $ let ?tyvars = [] in foldlM
-             (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-             (HS.Var $ HS.UnQual $ HS.Ident mname)
-             args
-  pure [hs| this <..> $mapplied |]
+  (locals,fields) <- unzip <$> mapM depends args
+  let maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this' -> $e) =<< readIORef this|])
+  if null locals
+    then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                               (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                               (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                               args) M.empty
+         in pure $ maybeWrapThis [hs| this <..> $mapplied |]
+    else do
+      scope <- M.unions <$> get
+      let mapplied = runReader (let ?vars = scope in foldlM
+                                              (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
+                                              (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                              args) M.empty
+      pure $ maybeWrapThis [hs| (this <..>) =<< $mapplied |]
 
 -- limits: PVar, this, null can be compiled
 -- other general pexps is limitation
@@ -228,33 +270,61 @@ tEffExp (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args) isAlone = case pexp
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
     case typ of
       Just (ABS.TSimple qtyp) -> do -- only interface type
-          mapplied <- liftPure $ let ?tyvars = [] in foldlM
-                     (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                     (HS.Var $ HS.UnQual $ HS.Ident mname)
-                     args
-          let (prefix, iident) = splitQType qtyp
+          (locals,fields) <- unzip <$> mapM depends args
+          let maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this' -> $e) =<< readIORef this|])
+              (prefix, iident) = splitQType qtyp
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
-          pure $ HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj''"]] $ if isAlone
-                                                                                then [hs| obj'' <!!> $mapplied |] -- optimized, fire&forget
-                                                                                else [hs| obj'' <!> $mapplied |]
+          if null locals
+            then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                         (HS.Var $ HS.UnQual $ HS.Ident mname) args) M.empty
+                 in pure $ maybeWrapThis $ HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj''"]] $ if isAlone
+                                                                                                          then [hs| obj'' <!!> $mapplied |] -- optimized, fire&forget
+                                                                                                          else [hs| obj'' <!> $mapplied |]
+            else do
+              scope <- M.unions <$> get
+              let mapplied = runReader (let ?vars = scope in  foldlM (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
+                                                    (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                                    args) M.empty
+              pure $ maybeWrapThis $ HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj''"]] $ if isAlone
+                                                                                                    then [hs| (obj'' <!!>) =<< $mapplied |] -- optimized, fire&forget
+                                                                                                    else [hs| (obj'' <!>) =<< $mapplied |]
       Nothing -> errorPos p "cannot find variable"
       _ -> errorPos p "invalid object callee type"
   ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
   
 tEffExp (ABS.ThisAsyncMethCall (ABS.LIdent (_,mname)) args) isAlone = do
-  mapplied <- liftPure $ let ?tyvars = [] in foldlM
-             (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-             (HS.Var $ HS.UnQual $ HS.Ident mname)
-             args
-  pure $ if isAlone 
-         then [hs| this <!!> $mapplied |] -- optimized, fire&forget
-         else [hs| this <!> $mapplied |]
+  (locals,fields) <- unzip <$> mapM depends args
+  let maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this' -> $e) =<< readIORef this|])
+  if null locals
+    then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                               (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                               (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                               args) M.empty
+         in pure (maybeWrapThis $ if isAlone 
+                                  then [hs| this <!!> $mapplied |] -- optimized, fire&forget
+                                  else [hs| this <!> $mapplied |])
+    else do
+      scope <- M.unions <$> get
+      let mapplied = runReader (let ?vars = scope in foldlM
+                                            (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
+                                            (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                            args) M.empty
+      pure $ maybeWrapThis $ if isAlone 
+                             then [hs| (this <!!>) =<< $mapplied |] -- optimized, fire&forget
+                             else [hs| (this <!>) =<< $mapplied |]
 
 tEffExp (ABS.Get pexp) _ = do
-  texp <- liftPure (let ?tyvars = [] in tPureExp pexp)
-  pure [hs| get $texp |] 
-
+  (locals,fields) <- depends pexp
+  let maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this' -> $e) =<< readIORef this|])
+  if null locals
+    then let texp = runReader (let ?tyvars = [] in tPureExp pexp) M.empty
+         in pure $ maybeWrapThis [hs| get $texp |]
+    else do
+      scope <- M.unions <$> get
+      let texp = runReader (let ?vars = scope in tStmExp pexp) M.empty
+      pure $ maybeWrapThis [hs| get =<< $texp |]
 
 -- HELPERS
 ----------
@@ -268,5 +338,62 @@ addToScope typ var@(ABS.LIdent (p,pid)) = do
 
 
 -- | lifting pure expressions into statement world
-liftPure :: (?st :: SymbolTable, ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => ExpScope HS.Exp -> StmScope HS.Exp
-liftPure pexp = runReader pexp . M.unions <$> get -- collapse in 1 pure scope
+liftPure :: (?st :: SymbolTable, ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => ExpScope a -> StmScope a
+liftPure a = runReader a . M.unions <$> get -- collapse in 1 pure scope
+
+--depends :: (?fields :: M.Map ABS.LIdent ABS.Type) => ABS.PureExp -> StmScope ([ABS.LIdent], [ABS.LIdent])
+depends pexp = liftPure $ depends' pexp ([],[])
+depends' pexp (rlocal,rfields) = do
+  scope <- ask
+  case pexp of
+    ABS.EThis ident -> pure (rlocal, ident:rfields)
+    ABS.EVar ident -> pure $ if ident `M.member` scope 
+                            then (ident:rlocal,rfields)
+                            else if ident `M.member` ?fields
+                                 then (rlocal,ident:rfields)
+                                 else (rlocal, rfields)
+    ABS.Let (ABS.Par _ ident) pexpEq pexpIn -> do
+                                    (rlocalEq, rfieldsEq) <- depends' pexpEq (rlocal,rfields)
+                                    (rlocalIn, rfieldsIn) <- let fields' = ?fields
+                                                            in
+                                                              let ?fields = M.delete ident fields' 
+                                                              in local (M.delete ident) (depends' pexpIn (rlocal, rfields))
+                                    pure (rlocalEq++rlocalIn, rfieldsEq++rfieldsIn)
+    ABS.Case pexpOf branches -> do
+        (rlocalOf, rfieldsOf) <- depends' pexpOf (rlocal,rfields)      
+        mapM (\ (ABS.CaseBranc pat pexpBranch) ->
+                  let fields' = ?fields
+                      idents = collectPatVars pat
+                  in
+                    let ?fields = foldl (flip M.delete) fields' idents
+                    in local (\ scope -> foldl (flip M.delete) scope idents) (depends' pexpBranch (rlocal, rfields))
+                  ) branches
+        pure (rlocalOf, rfieldsOf)
+    ABS.EOr e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.EAnd e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.EEq e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.ENeq e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.ELt e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.ELe e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.EGt e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.EGe e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.EAdd e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.ESub e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.EMul e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.EDiv e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.EMod e e' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e']
+    ABS.ELogNeg e -> depends' e (rlocal, rfields)
+    ABS.EIntNeg e -> depends' e (rlocal, rfields)
+    ABS.EFunCall _ es -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) es
+    ABS.EQualFunCall _ _ es -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) es
+    ABS.ENaryFunCall _ es -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) es
+    ABS.ENaryQualFunCall _ _ es -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) es
+    ABS.EParamConstr _ es -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) es
+    ABS.If e e' e'' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e',e'']
+    _ -> return (rlocal, rfields)
+
+collectPatVars :: ABS.Pattern -> [ABS.LIdent]
+collectPatVars (ABS.PIdent ident) = [ident]
+collectPatVars (ABS.PParamConstr _ pats) = concatMap collectPatVars pats
+collectPatVars _ = []
+
