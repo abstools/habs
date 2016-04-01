@@ -51,21 +51,21 @@ tPureExp (ABS.Case ofE branches) = do
             pure $ HS.Alt noLoc (tPattern pat) (HS.UnGuardedRhs texp) Nothing
          ) branches
 
-tPureExp (ABS.EFunCall (ABS.LIdent (_,cid)) args) = foldlM
+tPureExp (ABS.EFunCall (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
                                                     (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                     (HS.Var $ HS.UnQual $ HS.Ident cid)
                                                     args
-tPureExp (ABS.EQualFunCall ttyp (ABS.LIdent (_,cid)) args) = foldlM
+tPureExp (ABS.EQualFunCall ttyp (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
                                                              (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                              (HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid)
                                                              args
 
 tPureExp (ABS.ENaryFunCall (ABS.LIdent (_,cid)) args) = 
-    HS.App (HS.Var $ HS.UnQual $ HS.Ident cid)
+    HS.Paren . HS.App (HS.Var $ HS.UnQual $ HS.Ident cid)
           <$> HS.List <$> mapM tPureExp args
 
 tPureExp (ABS.ENaryQualFunCall ttyp (ABS.LIdent (_,cid)) args) = do
-    HS.App (HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid)
+    HS.Paren . HS.App (HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid)
           <$> HS.List <$> mapM tPureExp args
 
 -- constants
@@ -112,25 +112,25 @@ tPureExp (ABS.EEq pexp pnull@(ABS.ELit (ABS.LNull))) = tPureExp (ABS.EEq pnull p
 --     Nothing -> errorPos p1 $ str1 ++ " not in scope"
 
 -- a catch-all for literals,constructors maybe coupled with vars
-tPureExp (ABS.EEq l r) = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl == $tr ) |]
+tPureExp (ABS.EEq l r) = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl == $tr) |]
 
 -- -- normalizess to not . ==
 tPureExp (ABS.ENeq left right) = tPureExp (ABS.ELogNeg $ ABS.EEq left right) 
 
 -- -- be careful to parenthesize infix apps
-tPureExp (ABS.EOr l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl || $tr ) |]
-tPureExp (ABS.EAnd l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl && $tr ) |]
-tPureExp (ABS.ELt l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl < $tr ) |]
-tPureExp (ABS.ELe l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl <= $tr ) |]
-tPureExp (ABS.EGt l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl > $tr ) |]
-tPureExp (ABS.EGe l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl >= $tr ) |]
-tPureExp (ABS.EAdd l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl + $tr ) |]
-tPureExp (ABS.ESub l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl - $tr ) |]
-tPureExp (ABS.EMul l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl * $tr ) |]
-tPureExp (ABS.EDiv l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl / $tr ) |]
-tPureExp (ABS.EMod l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ( $tl % $tr ) |]
-tPureExp (ABS.ELogNeg e) = do te <- tPureExp e; pure [hs| ( not $te ) |]
-tPureExp (ABS.EIntNeg e) = do te <- tPureExp e; pure [hs| (- $te ) |]
+tPureExp (ABS.EOr l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl || $tr) |]
+tPureExp (ABS.EAnd l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl && $tr) |]
+tPureExp (ABS.ELt l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl < $tr) |]
+tPureExp (ABS.ELe l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl <= $tr) |]
+tPureExp (ABS.EGt l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl > $tr) |]
+tPureExp (ABS.EGe l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl >= $tr) |]
+tPureExp (ABS.EAdd l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl + $tr) |]
+tPureExp (ABS.ESub l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl - $tr) |]
+tPureExp (ABS.EMul l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl * $tr) |]
+tPureExp (ABS.EDiv l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl / $tr) |]
+tPureExp (ABS.EMod l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl % $tr) |]
+tPureExp (ABS.ELogNeg e) = do te <- tPureExp e; pure [hs| (not $te) |]
+tPureExp (ABS.EIntNeg e) = do te <- tPureExp e; pure [hs| (- $te) |]
 
 tPureExp (ABS.ESinglConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Unit"))]))     = pure [hs| () |]
 tPureExp (ABS.ESinglConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Nil"))]))      = pure [hs| [] |]
@@ -140,23 +140,23 @@ tPureExp (ABS.ESinglConstr qtyp) = pure $ HS.Con $ HS.UnQual $ HS.Ident $ showQT
 
 tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"Triple"))]) pexps) =   
     if length pexps == 3
-    then HS.Tuple HS.Boxed <$> mapM tPureExp pexps
+    then HS.Paren . HS.Tuple HS.Boxed <$> mapM tPureExp pexps
     else errorPos p "wrong number of arguments to Triple"
 tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"Pair"))]) pexps) = 
     if length pexps == 2
-    then HS.Tuple HS.Boxed <$> mapM tPureExp pexps
+    then HS.Paren . HS.Tuple HS.Boxed <$> mapM tPureExp pexps
     else errorPos p "wrong number of arguments to Pair"
 tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Cons"))]) [l, r]) = do
    tl <- tPureExp l
    tr <- tPureExp r
-   pure $ [hs| ( $tl : $tr ) |]
+   pure $ [hs| ($tl : $tr) |]
 tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"Cons"))]) _) = errorPos p "wrong number of arguments to Cons"
 tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"InsertAssoc"))]) [l, r]) = do
   tl <- tPureExp l
   tr <- tPureExp r
-  pure $ [hs| insertAssoc $tl $tr |]
+  pure $ [hs| (insertAssoc $tl $tr) |]
 tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"InsertAssoc"))]) _) = errorPos p "wrong number of arguments to InsertAssoc"
-tPureExp (ABS.EParamConstr qtyp args) = 
+tPureExp (ABS.EParamConstr qtyp args) = HS.Paren <$>
     foldlM (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
     (HS.Con $ HS.UnQual $ HS.Ident $ showQType qtyp)
     args

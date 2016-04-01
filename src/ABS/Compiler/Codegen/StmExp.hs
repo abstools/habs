@@ -48,23 +48,23 @@ tStmExp (ABS.Case ofE branches) = do
                , HS.Qualifier tcase
                ]
 
-tStmExp (ABS.EFunCall (ABS.LIdent (_,cid)) args) = foldlM
+tStmExp (ABS.EFunCall (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
                                                     (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                                     [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident cid) |]
                                                     args
-tStmExp (ABS.EQualFunCall ttyp (ABS.LIdent (_,cid)) args) = foldlM
+tStmExp (ABS.EQualFunCall ttyp (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
                                                              (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                                              [hs| I'.pure $(HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid) |]
                                                              args
 
 tStmExp (ABS.ENaryFunCall (ABS.LIdent (_,cid)) args) = do
     targs <- HS.List <$> mapM tStmExp args
-    pure [hs| $(HS.Var $ HS.UnQual $ HS.Ident cid) (sequence $targs) |]
+    pure [hs| ($(HS.Var $ HS.UnQual $ HS.Ident cid) (sequence $targs)) |]
 
 
 tStmExp (ABS.ENaryQualFunCall ttyp (ABS.LIdent (_,cid)) args) = do
     targs <- HS.List <$> mapM tStmExp args
-    pure [hs| $(HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid) (sequence $targs) |]
+    pure [hs| ($(HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid) (sequence $targs)) |]
 
 -- constants
 tStmExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LNull)) = pure [hs| I'.pure True |]
@@ -110,25 +110,25 @@ tStmExp (ABS.EEq pexp pnull@(ABS.ELit (ABS.LNull))) = tStmExp (ABS.EEq pnull pex
 --     Nothing -> errorPos p1 $ str1 ++ " not in scope"
 
 -- a catch-all for literals,constructors maybe coupled with vars
-tStmExp (ABS.EEq l r) = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (==) <$> $tl <*> $tr |]
+tStmExp (ABS.EEq l r) = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((==) <$> $tl <*> $tr) |]
 
--- -- normalizess to not . ==
+-- -- normalizes to not . ==
 tStmExp (ABS.ENeq left right) = tStmExp (ABS.ELogNeg $ ABS.EEq left right) 
 
 -- -- be careful to parenthesize infix apps
-tStmExp (ABS.EOr l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (||) <$> $tl <*> $tr |]
-tStmExp (ABS.EAnd l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (^) <$> $tl <*> $tr |]
-tStmExp (ABS.ELt l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (<) <$> $tl <*> $tr |]
-tStmExp (ABS.ELe l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (<=) <$> $tl <*> $tr |]
-tStmExp (ABS.EGt l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (>) <$> $tl <*> $tr |]
-tStmExp (ABS.EGe l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (>=) <$> $tl <*> $tr |]
-tStmExp (ABS.EAdd l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (+) <$> $tl <*> $tr |]
-tStmExp (ABS.ESub l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (-) <$> $tl <*> $tr |]
-tStmExp (ABS.EMul l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (*) <$> $tl <*> $tr |]
-tStmExp (ABS.EDiv l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (/) <$> $tl <*> $tr |]
-tStmExp (ABS.EMod l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| (%) <$> $tl <*> $tr |]
-tStmExp (ABS.ELogNeg e) = do te <- tStmExp e; pure [hs| (not) <$> $te |]
-tStmExp (ABS.EIntNeg e) = do te <- tStmExp e; pure [hs| (-) <$> $te |]
+tStmExp (ABS.EOr l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((||) <$> $tl <*> $tr) |]
+tStmExp (ABS.EAnd l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((^) <$> $tl <*> $tr) |]
+tStmExp (ABS.ELt l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((<) <$> $tl <*> $tr) |]
+tStmExp (ABS.ELe l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((<=) <$> $tl <*> $tr) |]
+tStmExp (ABS.EGt l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((>) <$> $tl <*> $tr) |]
+tStmExp (ABS.EGe l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((>=) <$> $tl <*> $tr) |]
+tStmExp (ABS.EAdd l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((+) <$> $tl <*> $tr) |]
+tStmExp (ABS.ESub l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((-) <$> $tl <*> $tr) |]
+tStmExp (ABS.EMul l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((*) <$> $tl <*> $tr) |]
+tStmExp (ABS.EDiv l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((/) <$> $tl <*> $tr) |]
+tStmExp (ABS.EMod l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((%) <$> $tl <*> $tr) |]
+tStmExp (ABS.ELogNeg e) = do te <- tStmExp e; pure [hs| ((not) <$> $te) |]
+tStmExp (ABS.EIntNeg e) = do te <- tStmExp e; pure [hs| ((-) <$> $te) |]
 
 tStmExp (ABS.ESinglConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Unit"))]))     = pure [hs| I'.pure () |]
 tStmExp (ABS.ESinglConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Nil"))]))      = pure [hs| I'.pure [] |]
@@ -143,7 +143,7 @@ tStmExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"Triple"))])
       texp1 <- tStmExp pexp1
       texp2 <- tStmExp pexp2
       texp3 <- tStmExp pexp3
-      pure [hs| (,,) <$> $texp1 <*> $texp2 <*> $texp3 |]
+      pure [hs| ((,,) <$> $texp1 <*> $texp2 <*> $texp3) |]
     else errorPos p "wrong number of arguments to Triple"
 tStmExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"Pair"))]) pexps) = 
     if length pexps == 2
@@ -151,19 +151,19 @@ tStmExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"Pair"))]) p
       let [pexp1,pexp2] = pexps
       texp1 <- tStmExp pexp1
       texp2 <- tStmExp pexp2
-      pure [hs| (,) <$> $texp1 <*> $texp2 |]
+      pure [hs| ((,) <$> $texp1 <*> $texp2) |]
     else errorPos p "wrong number of arguments to Pair"
 tStmExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Cons"))]) [l, r]) = do
    tl <- tStmExp l
    tr <- tStmExp r
-   pure $ [hs| (:) <$> $tl <*> $tr |]
+   pure $ [hs| ((:) <$> $tl <*> $tr) |]
 tStmExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"Cons"))]) _) = errorPos p "wrong number of arguments to Cons"
 tStmExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"InsertAssoc"))]) [l, r]) = do
   tl <- tStmExp l
   tr <- tStmExp r
-  pure $ [hs| insertAssoc <$> $tl <*> $tr |]
+  pure $ [hs| (insertAssoc <$> $tl <*> $tr) |]
 tStmExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"InsertAssoc"))]) _) = errorPos p "wrong number of arguments to InsertAssoc"
-tStmExp (ABS.EParamConstr qtyp args) = 
+tStmExp (ABS.EParamConstr qtyp args) = HS.Paren <$>
     foldlM
     (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
     [hs| I'.pure $(HS.Con $ HS.UnQual $ HS.Ident $ showQType qtyp) |]

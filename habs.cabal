@@ -52,6 +52,7 @@ executable habs
     ABS.Compiler.Codegen.Mod,
     ABS.Compiler.Codegen.Dec,
     ABS.Compiler.Codegen.Stm,
+    ABS.Compiler.Codegen.StmExp,
     ABS.Compiler.Codegen.Exp,
     ABS.Compiler.Codegen.Typ,
     ABS.Compiler.Codegen.Pat,

@@ -51,6 +51,18 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                         , HS.importAs = Nothing
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
                         } 
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Function" 
+                        , HS.importQualified = False
+                        , HS.importAs = Nothing
+                        , HS.importSpecs = Just (False,[HS.IVar (HS.Symbol ".")])
+                        , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                        }
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Applicative" 
+                        , HS.importQualified = False
+                        , HS.importAs = Nothing
+                        , HS.importSpecs = Just (False,[HS.IVar (HS.Symbol "<$>"), HS.IVar (HS.Symbol "<*>")])
+                        , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                        }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Applicative" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
@@ -67,6 +79,12 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
                         , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "liftIO")])
+                        , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                        }
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "System.IO" 
+                        , HS.importQualified = True
+                        , HS.importAs = Just (HS.ModuleName "I'")
+                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "putStrLn")])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         ]
