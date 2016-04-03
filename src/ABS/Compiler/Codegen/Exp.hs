@@ -188,8 +188,8 @@ tPureExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LInt i ->  HS.Lit $ HS.Int i
                                    ABS.LThis -> if null ?cname
                                                then error "cannot call this in pure context"
-                                               else [hs| (up this) |]
-                                   ABS.LNull -> [hs| (up null) |]
+                                               else [hs| (up' this) |]
+                                   ABS.LNull -> [hs| (up' null) |]
                                    ABS.LThisDC -> [hs| thisDC |]
 
 

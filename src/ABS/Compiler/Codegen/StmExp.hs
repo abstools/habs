@@ -199,8 +199,8 @@ tStmExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LInt i ->  [hs| I'.pure $(HS.Lit $ HS.Int i) |]
                                    ABS.LThis -> if null ?cname
                                                then error "cannot call this here"
-                                               else [hs| I'.pure (up this) |]
-                                   ABS.LNull -> [hs| I'.pure (up null) |]
+                                               else [hs| I'.pure (up' this) |]
+                                   ABS.LNull -> [hs| I'.pure (up' null) |]
                                    ABS.LThisDC -> [hs| I'.pure thisDC |]
 
 
