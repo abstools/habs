@@ -27,7 +27,7 @@ tMethod :: (?st :: SymbolTable) => ABS.Block -> [ABS.Param] -> M.Map ABS.LIdent 
 tMethod (ABS.Bloc mbody) mparams fields cname = evalState (let ?fields = fields  -- fixed fields passed as an implicit param
                                                                ?cname = cname    -- className needed for field pattern-matching
                                                              in HS.Do . concat <$> mapM tStm mbody)
-                                          [M.empty, -- clean new scope
+                                          [M.empty, -- new scope
                                            M.fromList (map (\ (ABS.Par t i) -> (i,t)) mparams)] -- first scope level is the formal params
 
 
@@ -53,7 +53,7 @@ tStm (ABS.AnnStm _ (ABS.SDec t i@(ABS.LIdent (p,n)))) = case t of
                                           addToScope t i
                                           pure [HS.Generator noLoc 
                                                       (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) -- o :: IORef Interf <- null
-                                                      [hs| I'.liftIO (I'.newIORef null) |] ]
+                                                      [hs| I'.liftIO (I'.newIORef ($(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp) null)) |] ]
                           Foreign -> do
                             addToScope t i
                             pure [HS.Generator noLoc
@@ -66,8 +66,12 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE eexp))) = do
   addToScope t i
   texp <- tEffExp eexp False -- not standalone
   pure [ HS.Generator noLoc 
-               (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) 
-               [hs| (I'.liftIO . I'.newIORef) =<< $texp |] ]
+               (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) $
+                 case eexp of
+                   ABS.New _ _ -> case t of ABS.TSimple qtyp -> [hs| (I'.liftIO . I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< $texp |] 
+                   ABS.NewLocal _ _ -> case t of ABS.TSimple qtyp -> [hs| (I'.liftIO . I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< $texp |]
+                   _ -> [hs| (I'.liftIO . I'.newIORef) =<< $texp |] 
+       ]
 
 tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpP pexp))) = do
   addToScope t i
@@ -88,11 +92,16 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpP pexp))) = do
                $ maybeWrapThis [hs| I'.liftIO (I'.newIORef =<< $texp) |] ]
 
 
-tStm (ABS.AnnStm _ (ABS.SAss (ABS.LIdent (_,n)) (ABS.ExpE eexp))) = do
+tStm (ABS.AnnStm _ (ABS.SAss i@(ABS.LIdent (_,n)) (ABS.ExpE eexp))) = do
   texp <- tEffExp eexp False -- not standalone
+  Just t <- M.lookup i . M.unions <$> get
   pure [ HS.Generator noLoc 
-               (HS.PVar $ HS.Ident n)
-               [hs| (I'.liftIO . I'.newIORef) =<< $texp |] ]
+               (HS.PVar $ HS.Ident n) $
+                 case eexp of
+                   ABS.New _ _ -> case t of ABS.TSimple qtyp -> [hs| (I'.liftIO . I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< $texp |] 
+                   ABS.NewLocal _ _ -> case t of ABS.TSimple qtyp -> [hs| (I'.liftIO . I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< $texp |]
+                   _ -> [hs| (I'.liftIO . I'.newIORef) =<< $texp |] 
+       ]
 
 tStm (ABS.AnnStm _ (ABS.SAss (ABS.LIdent (_,n)) (ABS.ExpP pexp))) = do
   (locals, fields) <- depends pexp
@@ -121,7 +130,7 @@ tStm (ABS.AnnStm _ ABS.SSuspend) = pure [HS.Qualifier [hs| suspend this |]]
 
 tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
   let (futureGuards, boolGuards) = splitGuard g
-  tfguards <- mapM tGuard futureGuards   -- sequentialize: await fguard? ; await gguard?;
+  tfguards <- mapM tGuard futureGuards   -- sequentialize: await f1guard? ; await f2guard?;
   tbguards <- if null boolGuards
              then pure []                           
              else tGuard (foldl1 (\ (ABS.ExpGuard exp1) (ABS.ExpGuard exp2) -> ABS.ExpGuard $ exp1 `ABS.EAnd` exp2) boolGuards) -- combine bguards with boolean AND
@@ -148,7 +157,7 @@ tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
     -- currently, no solution to the cosimo problem
     tGuard (ABS.FutFieldGuard (ABS.LIdent (_, fname))) = do
       let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ fname ++ "'" ++ ?cname
-      pure [HS.Qualifier [hs| awaitFuture' . $fieldFun =<< I'.liftIO (I'.readIORef this) |]]
+      pure [HS.Qualifier [hs| (awaitFuture' . $fieldFun) =<< I'.liftIO (I'.readIORef this) |]]
 
     tGuard (ABS.ExpGuard pexp) = do
       pure [HS.Qualifier [hs| awaitBool' TODO |]]
@@ -204,13 +213,15 @@ tStm (ABS.AnnStm _ (ABS.SIfElse pexp stmThen stmElse)) = do
 -- CLASSIC IMPERATIVE STATEMENTS
 --------------------------------
 
+tStm (ABS.AnnStm a (ABS.SReturn e)) = tStm (ABS.AnnStm a (ABS.SExp e)) -- treat it as a standalone statement
+
+tStm (ABS.AnnStm _ (ABS.SSkip)) = pure [] -- ignore skip
+
 tStm (ABS.AnnStm _ (ABS.SBlock astms)) = do
   modify' (M.empty:)            -- add scope-level
   tstms <- mapM tStm astms
   modify' tail                  -- remove scope-level
   pure [HS.Qualifier $ HS.Do $ concat tstms]
-
-tStm (ABS.AnnStm a (ABS.SReturn e)) = tStm (ABS.AnnStm a (ABS.SExp e))
 
 tStm (ABS.AnnStm _ (ABS.SPrint pexp)) = do
   (locals, fields) <- depends pexp
@@ -225,13 +236,9 @@ tStm (ABS.AnnStm _ (ABS.SPrint pexp)) = do
       let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
       pure $ [HS.Qualifier $ maybeWrapThis [hs| I'.liftIO (I'.putStrLn =<< $texp) |] ]
 
-tStm (ABS.AnnStm _ (ABS.SSkip)) = pure [] -- ignores skip
-
--- expression as a standalone statement (i.e. ignoring its return result)
 tStm (ABS.AnnStm _ (ABS.SExp (ABS.ExpE eexp))) = do
-  texp <- tEffExp eexp True -- is standalone
+  texp <- tEffExp eexp True -- is a standalone statement
   pure [HS.Qualifier texp]
-
 tStm (ABS.AnnStm _ (ABS.SExp (ABS.ExpP pexp))) = do
   (locals, fields) <- depends pexp
   scopeLevels <- get
@@ -297,13 +304,13 @@ tEffExp (ABS.New qcname args) _ = do
                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                         initFun
                                                         args) formalParams
-             in pure $ maybeWrapThis [hs| new $smartCon $initApplied |]
+             in pure $ maybeWrapThis [hs| I'.liftIO (new $smartCon $initApplied) |]
         else do
           let initApplied = runReader (let ?vars = localVars in foldlM
                                                    (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
                                                    initFun
                                                    args) formalParams
-          pure $ maybeWrapThis [hs| (new $smartCon) =<< $initApplied |]
+          pure $ maybeWrapThis [hs| (I'.liftIO . new $smartCon) =<< $initApplied |]
 tEffExp (ABS.NewLocal qcname args) _ = do
       (locals,fields) <- unzip <$> mapM depends args
       scopeLevels <- get
@@ -325,8 +332,7 @@ tEffExp (ABS.NewLocal qcname args) _ = do
                                                     args) formalParams
            pure $ maybeWrapThis [hs| (newlocal' this $smartCon) =<< $initApplied |]
 
--- limits: PVar, this, null can be compiled
--- other general pexps is limitation
+-- pexp: PVar, this, null can be compiled, other limitation
 tEffExp (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args) _ = case pexp of
   ABS.EVar ident -> do
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
@@ -373,8 +379,7 @@ tEffExp (ABS.ThisSyncMethCall (ABS.LIdent (_,mname)) args) _ = do
                                               args) formalParams
       pure $ maybeWrapThis [hs| (this <..>) =<< $mapplied |]
 
--- limits: PVar, this, null can be compiled
--- other general pexps is limitation
+-- pexp: PVar, this, null can be compiled, other limitation
 tEffExp (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args) isAlone = case pexp of
   ABS.EVar ident -> do
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
@@ -391,15 +396,15 @@ tEffExp (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args) isAlone = case pexp
                                                          (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                          (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
                  in pure $ maybeWrapThis $ HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj''"]] $ if isAlone
-                                                                                                          then [hs| obj'' <!!> $mapplied |] -- optimized, fire&forget
-                                                                                                          else [hs| obj'' <!> $mapplied |]
+                                                                                                          then [hs| I'.liftIO (obj'' <!!> $mapplied) |] -- optimized, fire&forget
+                                                                                                          else [hs| I'.liftIO (obj'' <!> $mapplied) |]
             else do
               let mapplied = runReader (let ?vars = localVars in  foldlM (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
                                                     (HS.Var $ HS.UnQual $ HS.Ident mname)
                                                     args) formalParams
               pure $ maybeWrapThis $ HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj''"]] $ if isAlone
-                                                                                                    then [hs| (obj'' <!!>) =<< $mapplied |] -- optimized, fire&forget
-                                                                                                    else [hs| (obj'' <!>) =<< $mapplied |]
+                                                                                                    then [hs| (I'.liftIO . obj'' <!!>) =<< $mapplied |] -- optimized, fire&forget
+                                                                                                    else [hs| (I'.liftIO . obj'' <!>) =<< $mapplied |]
       Nothing -> errorPos p "cannot find variable"
       _ -> errorPos p "invalid object callee type"
   ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
@@ -416,16 +421,16 @@ tEffExp (ABS.ThisAsyncMethCall (ABS.LIdent (_,mname)) args) isAlone = do
                                                (HS.Var $ HS.UnQual $ HS.Ident mname)
                                                args) formalParams
          in pure (maybeWrapThis $ if isAlone 
-                                  then [hs| this <!!> $mapplied |] -- optimized, fire&forget
-                                  else [hs| this <!> $mapplied |])
+                                  then [hs| I'.liftIO (this <!!> $mapplied) |] -- optimized, fire&forget
+                                  else [hs| I'.liftIO (this <!> $mapplied) |])
     else do
       let mapplied = runReader (let ?vars = localVars in foldlM
                                             (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
                                             (HS.Var $ HS.UnQual $ HS.Ident mname)
                                             args) formalParams
       pure $ maybeWrapThis $ if isAlone 
-                             then [hs| (this <!!>) =<< $mapplied |] -- optimized, fire&forget
-                             else [hs| (this <!>) =<< $mapplied |]
+                             then [hs| (I'.liftIO . this <!!>) =<< $mapplied |] -- optimized, fire&forget
+                             else [hs| (I'.liftIO . this <!>) =<< $mapplied |]
 
 tEffExp (ABS.Get pexp) _ = do
   (locals,fields) <- depends pexp
@@ -450,9 +455,14 @@ addToScope typ var@(ABS.LIdent (p,pid)) = do
     else put $ M.insertWith (const $ const $ errorPos p $ pid ++ " already defined in this scope") var typ topscope  : restscopes
 
 
---depends :: (?fields :: M.Map ABS.LIdent ABS.Type) => ABS.PureExp -> StmScope ([ABS.LIdent], [ABS.LIdent])
 depends pexp = runReader (depends' pexp ([],[])) . M.unions . init <$> get
-depends' pexp (rlocal,rfields) = do
+    where
+ collectPatVars :: ABS.Pattern -> [ABS.LIdent]
+ collectPatVars (ABS.PIdent ident) = [ident]
+ collectPatVars (ABS.PParamConstr _ pats) = concatMap collectPatVars pats
+ collectPatVars _ = []
+
+ depends' pexp (rlocal,rfields) = do
   scope <- ask
   case pexp of
     ABS.EThis ident -> pure (rlocal, ident:rfields)
@@ -501,8 +511,4 @@ depends' pexp (rlocal,rfields) = do
     ABS.If e e' e'' -> foldl (\ (acc1,acc2) (x1,x2) -> (acc1++x1,acc2++x2)) ([],[]) <$> mapM (\ ex -> depends' ex (rlocal, rfields)) [e,e',e'']
     _ -> return (rlocal, rfields)
 
-collectPatVars :: ABS.Pattern -> [ABS.LIdent]
-collectPatVars (ABS.PIdent ident) = [ident]
-collectPatVars (ABS.PParamConstr _ pats) = concatMap collectPatVars pats
-collectPatVars _ = []
 

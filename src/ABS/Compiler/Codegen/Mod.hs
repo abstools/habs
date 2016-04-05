@@ -81,10 +81,16 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                         , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "liftIO")])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
-        , HS.ImportDecl { HS.importModule = HS.ModuleName "System.IO" 
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "Prelude" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
-                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "putStrLn")])
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "putStrLn"])
+                        , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                        }
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "Unsafe.Coerce" 
+                        , HS.importQualified = True
+                        , HS.importAs = Just (HS.ModuleName "I'")
+                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "unsafeCoerce")])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         ]

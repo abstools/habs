@@ -85,7 +85,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                                                                else M.lookup (SN ident (Just (prefix, False))) ?st 
                                                                                         <|> M.lookup (SN ident (Just (prefix, True))) ?st 
                                                    in case symbolType of
-                                                        Interface _ _ -> [hs| null |]
+                                                        Interface _ _ -> [hs| $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp) null |]
                                                         Foreign -> [hs| undefined |]
                                                         _ -> errorPos p "A field must be initialised if it is not of a reference type"
                                                   ) : acc
@@ -111,12 +111,14 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
         M.empty) Nothing]
 
   : -- The init'Class function
-  case mInit of
-    ABS.NoBlock -> [] 
-    ABS.JustBlock _ block -> let initName = "init'" ++ clsName 
-                            in if "run" `M.member` aloneMethods
-                               then [ [dec| __initName__ this = $(tMethod block [] fields clsName) >> this <!!> run |] ]
-                               else [ [dec| __initName__ this = $(tMethod block [] fields clsName) |] ]
+  let initName = "init'" ++ clsName 
+  in case mInit of
+    ABS.NoBlock -> if "run" `M.member` aloneMethods
+                  then [ [dec| __initName__ this = this <!!> run |] ]
+                  else [ [dec| __initName__ this = return () |] ]
+    ABS.JustBlock _ block -> if "run" `M.member` aloneMethods
+                            then [ [dec| __initName__ this = $(tMethod block [] fields clsName) >> this <!!> run |] ]
+                            else [ [dec| __initName__ this = $(tMethod block [] fields clsName) |] ]
 
   ++  -- The direct&indirect instances for interfaces
   concatMap (\ qtyp -> let 
@@ -140,7 +142,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
     -- the indirect instances
     : M.foldlWithKey (\ acc (SN n _) indirectMethods ->
                           HS.InstDecl noLoc Nothing [] [] 
-                                (HS.UnQual $ HS.Ident $ showQType qtyp ++ "'") -- the interface name
+                                (HS.UnQual $ HS.Ident $ n ++ "'") -- the interface name
                                 [HS.TyCon $ HS.UnQual $ HS.Ident $ clsName] -- the class name
                                 (fmap (\ mname -> let Just (ABS.MethClassBody typ _ mparams block) = M.lookup mname classMethods
                                                  in HS.InsDecl (HS.FunBind  [HS.Match noLoc (HS.Ident mname) 
@@ -214,7 +216,7 @@ tDecl (ABS.DataParDecl (ABS.UIdent (_,tid)) tyvars constrs) =  HS.DataDecl noLoc
                 ABS.ParamConstrIdent (ABS.UIdent (_,cid)) args -> HS.QualConDecl noLoc [] [] (HS.ConDecl (HS.Ident cid) (map (HS.TyBang HS.BangedTy . tTypeOrTyVar tyvars . typOfConstrType) args))) constrs) -- TODO: maybe only allow Banged Int,Double,... like the class-datatype
 
           -- Deriving
-           ([(HS.UnQual $ HS.Ident "Eq'", []), (HS.UnQual $ HS.Ident "Show'", [])])
+           ([(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])])
 
           -- Extra record-accessor functions
           : map (\ (ABS.LIdent (_,fname), consname, idx, len) ->  
@@ -245,17 +247,23 @@ tDecl (ABS.ExtendsDecl (ABS.UIdent (_,tname)) extends ms) = HS.ClassDecl noLoc
       : -- Existential Wrapper
       HS.DataDecl noLoc HS.DataType [] (HS.Ident tname) [] [HS.QualConDecl noLoc [HS.UnkindedVar $ HS.Ident "a"] [HS.ClassA (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyVar (HS.Ident "a")]] (HS.ConDecl (HS.Ident tname) [HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a")])] []
       : -- Show instance for the wrapper
-      HS.InstDecl noLoc Nothing [] [] (HS.UnQual $ HS.Ident "Show'") [HS.TyCon $ HS.UnQual $ HS.Ident $ tname]
+      HS.InstDecl noLoc Nothing [] [] (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show") [HS.TyCon $ HS.UnQual $ HS.Ident $ tname]
             [HS.InsDecl (HS.FunBind  [HS.Match noLoc (HS.Ident "show") [HS.PWildCard] Nothing (HS.UnGuardedRhs $ HS.Lit $ HS.String tname) Nothing])]
       : -- Eq instance for the wrapper
-      HS.InstDecl noLoc Nothing [] [] (HS.UnQual $ HS.Ident  "Eq'") [HS.TyCon $ HS.UnQual $ HS.Ident tname]
+      HS.InstDecl noLoc Nothing [] [] (HS.Qual (HS.ModuleName "I'") $ HS.Ident  "Eq") [HS.TyCon $ HS.UnQual $ HS.Ident tname]
          [HS.InsDecl $ HS.FunBind [HS.Match noLoc (HS.Symbol "==") 
                                    [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref1'", HS.PWildCard]],
                                     HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref2'", HS.PWildCard]]]
                                    Nothing (HS.UnGuardedRhs $ HS.InfixApp 
                                                   (HS.Var $ HS.UnQual $ HS.Ident "ref1'") 
                                                   (HS.QVarOp $ HS.UnQual $ HS.Symbol "==") 
-                                                  (HS.Var $ HS.UnQual $ HS.Ident "ref2'")) Nothing]]
+                                                  (HS.App (HS.Var $ HS.Qual (HS.ModuleName "I'") $ HS.Ident "unsafeCoerce") (HS.Var $ HS.UnQual $ HS.Ident "ref2'"))) Nothing]]
+
+       -- null class is an instance of any interface
+       : HS.InstDecl noLoc Nothing [] [] (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyCon $ HS.UnQual $ HS.Ident "Null'"] 
+             (map (\ (ABS.AnnMethSig _ (ABS.MethSig _ (ABS.LIdent (_,mid)) _)) -> 
+                       HS.InsDecl [dec| __mid__ = error  "this should not happen. report the program to the compiler developers" |] ) ms)
+
 
       : -- Sub instance self 
       HS.InstDecl noLoc Nothing []  []
@@ -265,6 +273,18 @@ tDecl (ABS.ExtendsDecl (ABS.UIdent (_,tname)) extends ms) = HS.ClassDecl noLoc
                                 HS.InsDecl $ HS.FunBind $ [HS.Match noLoc (HS.Ident "up'") [HS.PVar $ HS.Ident "x'"] Nothing 
                                                            (HS.UnGuardedRhs $ HS.Var $ HS.UnQual $ HS.Ident "x'") Nothing]
                             ]
+
+      : -- Sub instance for unwrapped this & null
+      HS.InstDecl noLoc Nothing []
+            [HS.ClassA (HS.UnQual $ HS.Ident (tname ++ "'")) [HS.TyVar $ HS.Ident "a"]] -- context
+            (HS.UnQual $ HS.Ident "Sub'")  -- instance (I1' a) => Sub (Obj' a) I1
+            [ HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a")
+            , HS.TyCon $ HS.UnQual $ HS.Ident $ tname]
+            [   -- the upcasting method
+                -- is wrapping with the constructor
+                HS.InsDecl $ HS.FunBind $ [HS.Match noLoc (HS.Ident "up'") [] Nothing 
+                                                 (HS.UnGuardedRhs $ (HS.Con $ HS.UnQual $ HS.Ident tname)
+                                                 ) Nothing] ]
 
       : -- Sub instances of all direct AND indirect supertypes
       generateSubForAllSupers

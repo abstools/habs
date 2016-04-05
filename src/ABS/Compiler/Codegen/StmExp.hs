@@ -1,4 +1,7 @@
 {-# LANGUAGE ImplicitParams, QuasiQuotes #-}
+-- | abs-pure-expressions in the statement world (which allows mutable local variables, fields, etc)
+-- 
+-- the resulting haskell expressions have type IO, which means that eventually later have to be lifted to ABS monad
 module ABS.Compiler.Codegen.StmExp
     ( tStmExp
     )where
@@ -11,15 +14,15 @@ import ABS.Compiler.Firstpass.Base (SymbolTable)
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
-import qualified Data.Map as M (Map, fromList, insert, member)
+import qualified Data.Map as M (Map, fromList, insert, member, lookup)
 import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
 
--- | Translating a pure expression
-
+-- | Translating a pure expression augmented to work with mutable local variables & fields of the statement world
 tStmExp :: ( ?st::SymbolTable, ?vars::M.Map ABS.LIdent ABS.Type, ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 
           ABS.PureExp -> ExpScope HS.Exp
+
 tStmExp (ABS.If predE thenE elseE) = do
   tpred <- tStmExp predE
   tthen <- tStmExp thenE
@@ -71,21 +74,16 @@ tStmExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LNull)) = pure [hs| I'.pure 
 tStmExp (ABS.EEq (ABS.ELit ABS.LThis) (ABS.ELit ABS.LThis)) = pure [hs| I'.pure True |]
 tStmExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LThis)) = pure [hs| I'.pure False |]
 
--- tStmExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.LIdent (p,str)))) _tyvars = do
---   tnull <- tStmExp pnull _tyvars
---   tvar <- tStmExp pvar _tyvars
---   fscope <- ask
---   case M.lookup ident fscope of -- check the type of the right var
---     Just t -> if isInterface t
---              then return $ HS.Paren $ HS.InfixApp
---                       (HS.ExpTypeSig HS.noLoc tnull (tType t))
---                        (HS.QVarOp $ HS.UnQual  $ HS.Symbol "==")
---                        (HS.ExpTypeSig HS.noLoc tvar (tType t))
---              else errorPos p "cannot equate datatype to null"
---     Nothing -> errorPos p $ str ++ " not in scope"
-
+-- optimization, to wrap null with the direct interface of rhs instead of up'
+tStmExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.LIdent (p,str)))) = do
+   scope <- ask
+   tvar <- tStmExp pvar
+   pure $ case M.lookup ident scope of -- check the type of the right var
+            Just (ABS.TSimple qtyp) -> [hs| ((==) ($(HS.Var $ HS.UnQual $ HS.Ident (showQType qtyp)) null) <$> $tvar) |]
+            Just _ -> errorPos p "cannot equate null to non-interface type"
+            Nothing -> errorPos p $ str ++ " not in scope"
 -- commutative
-tStmExp (ABS.EEq pexp pnull@(ABS.ELit (ABS.LNull))) = tStmExp (ABS.EEq pnull pexp)
+tStmExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit (ABS.LNull))) = tStmExp (ABS.EEq pnull pvar)
 
 -- tStmExp (ABS.EEq pvar1@(ABS.EVar ident1@(ABS.LIdent (p1,str1))) pvar2@(ABS.EVar ident2@(ABS.LIdent (p2,str2)))) _tyvars = do
 --   tvar1 <- tStmExp pvar1 _tyvars

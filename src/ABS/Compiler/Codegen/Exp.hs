@@ -12,7 +12,7 @@ import ABS.Compiler.Firstpass.Base (SymbolTable)
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
-import qualified Data.Map as M (Map, fromList, insert, member)
+import qualified Data.Map as M (Map, fromList, insert, member, lookup)
 import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
@@ -73,21 +73,16 @@ tPureExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LNull)) = pure [hs| True |]
 tPureExp (ABS.EEq (ABS.ELit ABS.LThis) (ABS.ELit ABS.LThis)) = pure [hs| True |]
 tPureExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LThis)) = pure [hs| False |]
 
--- tPureExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.LIdent (p,str)))) _tyvars = do
---   tnull <- tPureExp pnull _tyvars
---   tvar <- tPureExp pvar _tyvars
---   fscope <- ask
---   case M.lookup ident fscope of -- check the type of the right var
---     Just t -> if isInterface t
---              then return $ HS.Paren $ HS.InfixApp
---                       (HS.ExpTypeSig HS.noLoc tnull (tType t))
---                        (HS.QVarOp $ HS.UnQual  $ HS.Symbol "==")
---                        (HS.ExpTypeSig HS.noLoc tvar (tType t))
---              else errorPos p "cannot equate datatype to null"
---     Nothing -> errorPos p $ str ++ " not in scope"
-
+-- optimization, to wrap null with the direct interface of rhs instead of up'
+tPureExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.LIdent (p,str)))) = do
+   scope <- ask
+   tvar <- tPureExp pvar
+   pure $ case M.lookup ident scope of -- check the type of the right var
+            Just (ABS.TSimple qtyp) -> [hs| ( $(HS.Var $ HS.UnQual $ HS.Ident (showQType qtyp)) null == $tvar ) |]
+            Just _ -> errorPos p "cannot equate null to non-interface type"
+            Nothing -> errorPos p $ str ++ " not in scope"
 -- commutative
-tPureExp (ABS.EEq pexp pnull@(ABS.ELit (ABS.LNull))) = tPureExp (ABS.EEq pnull pexp)
+tPureExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit (ABS.LNull))) = tPureExp (ABS.EEq pnull pvar)
 
 -- tPureExp (ABS.EEq pvar1@(ABS.EVar ident1@(ABS.LIdent (p1,str1))) pvar2@(ABS.EVar ident2@(ABS.LIdent (p2,str2)))) _tyvars = do
 --   tvar1 <- tPureExp pvar1 _tyvars
