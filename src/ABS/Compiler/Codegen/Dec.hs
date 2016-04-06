@@ -111,14 +111,20 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
         M.empty) Nothing]
 
   : -- The init'Class function
-  let initName = "init'" ++ clsName 
-  in case mInit of
-    ABS.NoBlock -> if "run" `M.member` aloneMethods
-                  then [ [dec| __initName__ this = this <!!> run |] ]
-                  else [ [dec| __initName__ this = return () |] ]
-    ABS.JustBlock _ block -> if "run" `M.member` aloneMethods
-                            then [ [dec| __initName__ this = $(tMethod block [] fields clsName) >> this <!!> run |] ]
-                            else [ [dec| __initName__ this = $(tMethod block [] fields clsName) |] ]
+  [HS.FunBind [HS.Match noLoc (HS.Ident $ "init'" ++ clsName)
+               -- class params are init params + this as param
+               (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) cparams ++ [HS.PVar $ HS.Ident "this"])
+               Nothing 
+               (HS.UnGuardedRhs $
+                  case mInit of
+                    ABS.NoBlock -> if "run" `M.member` aloneMethods
+                                  then [hs| this <!!> run |]
+                                  else [hs| return () |]
+                    ABS.JustBlock _ block -> if "run" `M.member` aloneMethods
+                                            then [hs| $(tMethod block [] fields clsName) >> this <!!> run |]
+                                            else [hs| $(tMethod block [] fields clsName) |]
+               ) (Just aloneWhereClause)] ]
+    
 
   ++  -- The direct&indirect instances for interfaces
   concatMap (\ qtyp -> let 
@@ -241,7 +247,7 @@ tDecl (ABS.DataParDecl (ABS.UIdent (_,tid)) tyvars constrs) =  HS.DataDecl noLoc
 tDecl (ABS.ExtendsDecl (ABS.UIdent (_,tname)) extends ms) = HS.ClassDecl noLoc 
         (map (\ qtyp -> HS.ClassA (HS.UnQual $ HS.Ident $ showQType qtyp ++ "'") [HS.TyVar (HS.Ident "a")]) extends) -- super-interfaces
         (HS.Ident $ tname ++ "'") -- name of interface
-        [HS.UnkindedVar (HS.Ident "a")] -- all are interfaces have kind * -> *
+        [HS.UnkindedVar (HS.Ident "a")] -- all interfaces have kind * -> *
         []
         (map (tMethSig tname) ms)
       : -- Existential Wrapper
@@ -292,7 +298,16 @@ tDecl (ABS.ExtendsDecl (ABS.UIdent (_,tname)) extends ms) = HS.ClassDecl noLoc
     where
     -- method_signature :: args -> Obj a (THIS) -> (res -> ABS ()) -> ABS ()
     tMethSig :: String -> ABS.AnnotMethSignat -> HS.ClassDecl
-    tMethSig = undefined
+    tMethSig interName (ABS.AnnMethSig _ (ABS.MethSig retTyp (ABS.LIdent (mpos,mname)) params)) = 
+        if mname == "run" && ((case retTyp of
+                              ABS.TSimple (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_, "Unit"))]) -> True
+                              _ -> False) || not (null params))
+        then errorPos mpos "run should have zero parameters and return type Unit"
+        else HS.ClsDecl $ HS.TypeSig noLoc [HS.Ident mname] $
+               foldr  -- function application is right-associative
+                 (\ tpar acc -> HS.TyFun tpar acc)
+                 (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "ABS'") (tType retTyp))
+                 (map (\ (ABS.Par typ _) -> tType typ) params ++ [(HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a"))]) -- last param is this
 
     generateSubForAllSupers :: (?st :: SymbolTable) => [HS.Decl]
     generateSubForAllSupers = case M.lookup (SN tname Nothing) ?st of
