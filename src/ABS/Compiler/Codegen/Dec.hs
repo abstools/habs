@@ -112,17 +112,16 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
 
   : -- The init'Class function
   [HS.FunBind [HS.Match noLoc (HS.Ident $ "init'" ++ clsName)
-               -- class params are init params + this as param
-               (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) cparams ++ [HS.PVar $ HS.Ident "this"])
+               [HS.PVar $ HS.Ident "this"] -- this, the only param
                Nothing 
                (HS.UnGuardedRhs $
                   case mInit of
                     ABS.NoBlock -> if "run" `M.member` aloneMethods
-                                  then [hs| this <!!> run |]
-                                  else [hs| return () |]
+                                  then [hs| (this <!!> run) :: I'.IO () |]
+                                  else [hs| (return ()) :: I'.IO () |]
                     ABS.JustBlock _ block -> if "run" `M.member` aloneMethods
-                                            then [hs| $(tMethod block [] fields clsName) >> this <!!> run |]
-                                            else [hs| $(tMethod block [] fields clsName) |]
+                                            then [hs| ($(tMethod block [] fields clsName) >> this <!!> run) :: I'.IO () |]
+                                            else [hs| ($(tMethod block [] fields clsName)) :: I'.IO () |]
                ) (Just aloneWhereClause)] ]
     
 
@@ -268,7 +267,7 @@ tDecl (ABS.ExtendsDecl (ABS.UIdent (_,tname)) extends ms) = HS.ClassDecl noLoc
        -- null class is an instance of any interface
        : HS.InstDecl noLoc Nothing [] [] (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyCon $ HS.UnQual $ HS.Ident "Null'"] 
              (map (\ (ABS.AnnMethSig _ (ABS.MethSig _ (ABS.LIdent (_,mid)) _)) -> 
-                       HS.InsDecl [dec| __mid__ = error  "this should not happen. report the program to the compiler developers" |] ) ms)
+                       HS.InsDecl [dec| __mid__ = I'.error  "this should not happen. report the program to the compiler developers" |] ) ms)
 
 
       : -- Sub instance self 
