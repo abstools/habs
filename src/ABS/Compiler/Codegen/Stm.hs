@@ -41,8 +41,8 @@ tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpP pexp) = do
   pure [HS.Qualifier $
          if null locals
          then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
-                  ioAction = [hs| (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) $texp) |]
-              in [hs| I'.liftIO $ioAction |]
+                  ioAction = [hs| I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) $texp |]
+              in [hs| I'.liftIO ($ioAction) |]
          else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
               in [hs| I'.liftIO (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< $texp) |] ]
 
@@ -65,8 +65,8 @@ tAss _ t (ABS.LIdent (_,n)) (ABS.ExpE (ABS.New qcname args)) = do
                   ioAction = [hs| ((I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< new $initFun $smartApplied) |]
               in [hs| I'.liftIO $ioAction |]
          else let smartApplied = runReader (let ?vars = localVars in foldlM
-                                               (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
-                                               smartCon
+                                               (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                               [hs| I'.pure $smartCon |]
                                                args) formalParams
               in [hs| I'.liftIO ((I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< (new $initFun =<< $smartApplied)) |] ]
 
@@ -88,8 +88,8 @@ tAss _ t (ABS.LIdent (_,n)) (ABS.ExpE (ABS.NewLocal qcname args)) = do
                   ioAction = [hs| ((I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< newlocal' this $initFun $smartApplied) |]
               in [hs| I'.liftIO $ioAction |]
          else let smartApplied = runReader (let ?vars = localVars in foldlM
-                                               (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
-                                               smartCon
+                                               (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                               [hs| I'.pure $smartCon |]
                                                args) formalParams
               in [hs| I'.liftIO ((I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< (newlocal' this $initFun =<< $smartApplied)) |] ]
 
@@ -201,8 +201,8 @@ tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.Get pexp)) = do
   pure [HS.Qualifier $
          if null locals
          then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
-                  ioAction = [hs| (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (get $texp)) |]
-              in [hs| I'.liftIO $ioAction |]
+                  ioAction = [hs| I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< get $texp |]
+              in [hs| I'.liftIO ($ioAction) |]
          else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
               in [hs| I'.liftIO (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (get =<< $texp)) |] ]
 
@@ -218,8 +218,8 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpP pexp))) = do
         (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) $
          if null locals
          then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
-                  ioAction = [hs| (I'.newIORef $texp) |]
-              in [hs| I'.liftIO $ioAction  |]
+                  ioAction = [hs| I'.newIORef $texp |]
+              in [hs| I'.liftIO ($ioAction)  |]
          else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
               in [hs| I'.liftIO (I'.newIORef =<< $texp) |] ]
 
@@ -243,8 +243,8 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.New qcname
                   ioAction = [hs| ((I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< new $initFun $smartApplied) |]
               in [hs| I'.liftIO $ioAction  |]
          else let smartApplied = runReader (let ?vars = localVars in foldlM
-                                               (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
-                                               smartCon
+                                               (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                               [hs| I'.pure $smartCon |]
                                                args) formalParams
               in [hs| I'.liftIO ((I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< (new $initFun =<< $smartApplied)) |] ]
 
@@ -267,8 +267,8 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.NewLocal q
                   ioAction = [hs| ((I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< newlocal' this $initFun $smartApplied) |]
               in [hs| I'.liftIO $ioAction |]
          else let smartApplied = runReader (let ?vars = localVars in foldlM
-                                               (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
-                                               smartCon
+                                               (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                               [hs| I'.pure $smartCon |]
                                                args) formalParams
               in [hs| I'.liftIO ((I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< (newlocal' this $initFun =<< $smartApplied)) |] ]
 
@@ -483,13 +483,13 @@ tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
     tGuard (ABS.FutGuard var@(ABS.LIdent (_, fname))) = do
       inScope <- M.member var . M.unions <$> get
       if inScope
-        then pure [HS.Qualifier [hs| awaitFuture' =<< $(HS.Var $ HS.UnQual $ HS.Ident fname) |]]
+        then pure [HS.Qualifier [hs| awaitFuture' this =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident fname)) |]]
         else tGuard (ABS.FutFieldGuard var) -- try as field-future
 
     -- currently, no solution to the cosimo problem
     tGuard (ABS.FutFieldGuard (ABS.LIdent (_, fname))) = do
       let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ fname ++ "'" ++ ?cname
-      pure [HS.Qualifier [hs| (awaitFuture' . $fieldFun) =<< I'.liftIO (I'.readIORef this) |]]
+      pure [HS.Qualifier [hs| (awaitFuture' this . $fieldFun) =<< I'.liftIO (I'.readIORef this) |]]
 
     tGuard (ABS.ExpGuard pexp) = do
       pure [HS.Qualifier [hs| awaitBool' TODO |]]
@@ -619,8 +619,8 @@ tEffExp (ABS.New qcname args) _ = do
                  ioAction = [hs| (new $initFun $smartApplied) |]
              in pure [hs| I'.liftIO $ioAction |]
         else let smartApplied = runReader (let ?vars = localVars in foldlM
-                                                   (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
-                                                   smartCon
+                                                   (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                                   [hs| I'.pure $smartCon |]
                                                    args) formalParams
              in pure [hs| I'.liftIO (new $initFun =<< $smartApplied) |]
 
@@ -640,8 +640,8 @@ tEffExp (ABS.NewLocal qcname args) _ = do
                  ioAction = [hs| (newlocal' this $initFun $smartApplied) |]
              in pure [hs| I'.liftIO $ioAction |]
         else let smartApplied = runReader (let ?vars = localVars in foldlM
-                                                   (\ acc nextArg -> HS.App acc <$> tStmExp nextArg)
-                                                   smartCon
+                                                   (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                                   [hs| I'.pure $smartCon |]
                                                    args) formalParams
              in pure [hs| I'.liftIO (newlocal' this $initFun =<< $smartApplied) |]
 
@@ -736,15 +736,15 @@ tEffExp (ABS.ThisAsyncMethCall (ABS.LIdent (_,mname)) args) isAlone = do
                                                (HS.Var $ HS.UnQual $ HS.Ident mname)
                                                args) formalParams
          in pure (if isAlone 
-                                  then [hs| I'.liftIO (this <!!> $mapplied) |] -- optimized, fire&forget
-                                  else [hs| I'.liftIO (this <!> $mapplied) |])
+                  then [hs| I'.liftIO (this <!!> $mapplied) |] -- optimized, fire&forget
+                  else [hs| I'.liftIO (this <!> $mapplied) |])
     else let mapplied = runReader (let ?vars = localVars in foldlM
                                             (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                             [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
                                             args) formalParams
          in pure $ if isAlone 
-                                   then [hs| (I'.liftIO . this <!!>) =<< $mapplied |] -- optimized, fire&forget
-                                   else [hs| (I'.liftIO . this <!>) =<< $mapplied |]
+                   then [hs| (I'.liftIO . this <!!>) =<< $mapplied |] -- optimized, fire&forget
+                   else [hs| (I'.liftIO . this <!>) =<< $mapplied |]
 
 tEffExp (ABS.Get pexp) _ = do
   scopeLevels <- get
