@@ -162,8 +162,9 @@ tPureExp (ABS.EVar var@(ABS.LIdent (p,pid))) = do
             then HS.Var $ HS.UnQual $ HS.Ident pid
             else if var `M.member` ?fields
                  then if null ?cname
-                      then error "cannot access fields in pure context"
-                      else HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname
+                      then errorPos p "cannot access fields in pure context"
+                      else let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname
+                           in [hs| ($fieldFun this') |] -- accessor
                  else errorPos p $ pid ++ " not in scope"
                 -- HS.Paren $ (if isInterface t
                 --             then HS.App (HS.Var $ identI "up") -- upcasting if it is of a class type

@@ -270,15 +270,6 @@ tDecl (ABS.ExtendsDecl (ABS.UIdent (_,tname)) extends ms) = HS.ClassDecl noLoc
                        HS.InsDecl [dec| __mid__ = I'.error  "this should not happen. report the program to the compiler developers" |] ) ms)
 
 
-      : -- Sub instance self 
-      HS.InstDecl noLoc Nothing []  []
-                            (HS.UnQual $ HS.Ident "Sub'")
-                            (replicate 2 $ HS.TyCon $ HS.UnQual $ HS.Ident tname) -- instance Sub Interf1 Interf1
-                            [   -- the upcasting method is 'id' in this case
-                                HS.InsDecl $ HS.FunBind $ [HS.Match noLoc (HS.Ident "up'") [HS.PVar $ HS.Ident "x'"] Nothing 
-                                                           (HS.UnGuardedRhs $ HS.Var $ HS.UnQual $ HS.Ident "x'") Nothing]
-                            ]
-
       : -- Sub instance for unwrapped this & null
       HS.InstDecl noLoc Nothing []
             [HS.ClassA (HS.UnQual $ HS.Ident (tname ++ "'")) [HS.TyVar $ HS.Ident "a"]] -- context

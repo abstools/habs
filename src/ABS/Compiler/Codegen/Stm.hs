@@ -492,9 +492,23 @@ tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
       pure [HS.Qualifier [hs| (awaitFuture' this . $fieldFun) =<< I'.liftIO (I'.readIORef this) |]]
 
     tGuard (ABS.ExpGuard pexp) = do
-      pure [HS.Qualifier [hs| awaitBool' TODO |]]
+      (locals, fields) <- depends pexp
+      scopeLevels <- get
+      let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+      if null fields
+        then error "You are not checking for anything observable in AWAIT"
+        else pure [HS.Qualifier $
+                   if null locals
+                   then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+                        in [hs| awaitBool' this (\ this' -> $texp) |]
+                   else let texp = runReader (let ?tyvars = [] in tPureExp pexp) (M.unions scopeLevels)
+                            expWrapped = foldl (\ acc (ABS.LIdent (_, nextVar)) -> 
+                                                    let nextIdent = HS.Ident nextVar 
+                                                    in [hs| (\ ((nextIdent)) -> $acc) =<< I'.readIORef $(HS.Var $ HS.UnQual nextIdent)|])
+                                         [hs| I'.pure (\ this' -> $texp) |]
+                                         locals
+                        in [hs| awaitBool' this =<< I'.liftIO ($expWrapped) |]]
 
-    tGuard _ = error "dev-error: this should not match"
 
 -- CONTROL FLOW STATEMENTS
 --------------------------
