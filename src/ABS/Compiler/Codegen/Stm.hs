@@ -404,7 +404,21 @@ tStm (ABS.AnnStm a (ABS.SAss i e)) = do
 ------------------- FIELD ASSIGNMENT
 
 
-tStm (ABS.AnnStm _ (ABS.SFieldAss i e)) = todo undefined
+tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.LIdent (_,field)) (ABS.ExpP pexp))) = do
+  scopeLevels <- get
+  (locals, _) <- depends pexp
+  let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+  pure [HS.Qualifier $
+         if null locals
+         then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+                  recordUpdate = HS.RecUpdate [hs| this'|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) $texp]
+              in [hs| I'.liftIO (I'.writeIORef this =<< 
+                                 ((\ this' -> $recordUpdate) <$> I'.readIORef this)) |]
+         else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+                  recordUpdate = HS.RecUpdate [hs| this'|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
+              in [hs| I'.liftIO (I'.writeIORef this =<<
+                                 ((\ this' -> (\ v' -> $recordUpdate) <$> $texp) =<< I'.readIORef this)) |]]
+  
 
 ------------------------- RETURN , STANDALONE EXPRESSION
 
