@@ -7,7 +7,7 @@ import ABS.Compiler.Codegen.Typ
 import ABS.Compiler.Codegen.Exp
 import ABS.Compiler.Codegen.Stm (tMethod)
 import Language.Haskell.Exts.SrcLoc (noLoc)
-import Language.Haskell.Exts.QQ (hs, dec)
+import Language.Haskell.Exts.QQ (hs, dec, pat)
 
 import Control.Applicative ((<|>))
 import Control.Monad.Trans.Reader (runReader)
@@ -112,7 +112,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
 
   : -- The init'Class function
   [HS.FunBind [HS.Match noLoc (HS.Ident $ "init'" ++ clsName)
-               [HS.PVar $ HS.Ident "this"] -- this, the only param
+               [[pat| this@(Obj' this' _) |]] -- this, the only param
                Nothing 
                (HS.UnGuardedRhs $
                   case mInit of
@@ -152,7 +152,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                 (fmap (\ mname -> let Just (ABS.MethClassBody typ _ mparams block) = M.lookup mname classMethods
                                                  in HS.InsDecl (HS.FunBind  [HS.Match noLoc (HS.Ident mname) 
                                                                              -- method params
-                                                                             (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [HS.PVar $ HS.Ident "this"])
+                                                                             (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                                                                              Nothing 
                                                                              (HS.UnGuardedRhs $ tMethod block mparams fields clsName) (Just aloneWhereClause)])
                                       ) indirectMethods) : acc
@@ -163,7 +163,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
   map (\ (mname, ABS.MethClassBody typ _ mparams block) ->
            (HS.FunBind  [HS.Match noLoc (HS.Ident $ mname ++ "''" ++ clsName)
                          -- method params
-                         (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [HS.PVar $ HS.Ident "this"])
+                         (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                          Nothing 
                          (HS.UnGuardedRhs $ tMethod block mparams fields clsName) Nothing]) )
           (M.assocs aloneMethods)
