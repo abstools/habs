@@ -7,7 +7,7 @@ import ABS.Compiler.Codegen.Typ
 import ABS.Compiler.Codegen.Exp
 import ABS.Compiler.Codegen.Stm (tMethod)
 import Language.Haskell.Exts.SrcLoc (noLoc)
-import Language.Haskell.Exts.QQ (hs, dec, pat)
+import Language.Haskell.Exts.QQ (hs, dec, pat, ty)
 
 import Control.Applicative ((<|>))
 import Control.Monad.Trans.Reader (runReader)
@@ -111,7 +111,10 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
         M.empty) Nothing]
 
   : -- The init'Class function
-  [HS.FunBind [HS.Match noLoc (HS.Ident $ "init'" ++ clsName)
+  [ HS.TypeSig noLoc [HS.Ident $ "init'" ++ clsName] (HS.TyApp 
+                                                      (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") 
+                                                      (HS.TyCon $ HS.UnQual $ HS.Ident clsName) `HS.TyFun` [ty| I'.IO () |])
+  , HS.FunBind [HS.Match noLoc (HS.Ident $ "init'" ++ clsName)
                [[pat| this@(Obj' this' _) |]] -- this, the only param
                Nothing 
                (HS.UnGuardedRhs $
@@ -160,12 +163,19 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
             ) impls
 
   ++ -- the rest alone, non-interface methods, named as:  method''Class
-  map (\ (mname, ABS.MethClassBody typ _ mparams block) ->
-           (HS.FunBind  [HS.Match noLoc (HS.Ident $ mname ++ "''" ++ clsName)
+  concatMap (\ (mname, ABS.MethClassBody retTyp _ mparams block) ->
+           [ HS.TypeSig noLoc [HS.Ident $ mname ++ "''" ++ clsName] $
+               foldr  -- function application is right-associative
+               (\ tpar acc -> HS.TyFun tpar acc)
+               (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "ABS'") (tType retTyp))
+               (map (\ (ABS.Par typ _) -> tType typ) mparams ++ [(HS.TyApp 
+                                                                       (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") 
+                                                                       (HS.TyCon $ HS.UnQual $ HS.Ident clsName))])
+           , HS.FunBind  [HS.Match noLoc (HS.Ident $ mname ++ "''" ++ clsName)
                          -- method params
                          (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                          Nothing 
-                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName) (Just aloneWhereClause)]) )
+                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName) (Just aloneWhereClause)]] )
           (M.assocs aloneMethods)
 
   where
