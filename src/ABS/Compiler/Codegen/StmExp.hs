@@ -177,7 +177,7 @@ tStmExp (ABS.EVar var@(ABS.LIdent (p,pid))) = do
                       then if null ?cname
                            then errorPos p "cannot access fields here"
                            else let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname
-                                in [hs| I'.pure ($fieldFun this') |] -- accessor
+                                in [hs| I'.pure ($fieldFun this'') |] -- accessor
                  else errorPos p $ pid ++ " not in scope"
                 -- HS.Paren $ (if isInterface t
                 --             then HS.App (HS.Var $ identI "up") -- upcasting if it is of a class type
@@ -191,7 +191,7 @@ tStmExp (ABS.EVar var@(ABS.LIdent (p,pid))) = do
 tStmExp (ABS.EThis (ABS.LIdent (_, field))) = if null ?cname
                                                then error "cannot access fields in pure context"
                                                else pure $ let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname
-                                                           in [hs| I'.pure ($fieldFun this') |] -- accessor
+                                                           in [hs| I'.pure ($fieldFun this'') |] -- accessor
 tStmExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LStr str ->  [hs| I'.pure $(HS.Lit $ HS.String str) |]
                                    ABS.LInt i ->  [hs| I'.pure $(HS.Lit $ HS.Int i) |]

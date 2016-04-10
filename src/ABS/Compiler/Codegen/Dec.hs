@@ -140,7 +140,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
           (fmap (\ mname -> let Just (ABS.MethClassBody typ _ mparams block) = M.lookup mname classMethods
                            in HS.InsDecl (HS.FunBind  [HS.Match noLoc (HS.Ident mname)
                                                        -- method params
-                                                       (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [HS.PVar $ HS.Ident "this"])
+                                                       (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                                                        Nothing 
                                                        (HS.UnGuardedRhs $ tMethod block mparams fields clsName) (Just aloneWhereClause)])
                 ) directMethods)
@@ -165,7 +165,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                          -- method params
                          (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                          Nothing 
-                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName) Nothing]) )
+                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName) (Just aloneWhereClause)]) )
           (M.assocs aloneMethods)
 
   where
