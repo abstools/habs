@@ -65,7 +65,12 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
      let ?tyvars = []
          ?cname = clsName
          ?fields = fields
-     in runReader (foldlM (\ acc -> \case
+     in 
+       -- fields take their param value
+       (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.FieldUpdate (HS.UnQual $ HS.Ident $ pid ++ "'" ++ clsName) (HS.Var $ HS.UnQual $ HS.Ident pid)) cparams)
+       ++
+       -- rest will be initialized by the class body, or default-initialized (futures, foreign, interfaces)
+       runReader (foldlM (\ acc -> \case
                            
                    -- Field f = val;
                    ABS.FieldAssignClassBody _t (ABS.LIdent (_, fid)) pexp -> do
