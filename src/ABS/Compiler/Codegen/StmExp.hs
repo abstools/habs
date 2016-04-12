@@ -14,7 +14,7 @@ import ABS.Compiler.Firstpass.Base (SymbolTable)
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
-import qualified Data.Map as M (Map, fromList, insert, member, lookup)
+import qualified Data.Map as M (Map, fromList, insert, member, lookup, union)
 import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
@@ -62,12 +62,12 @@ tStmExp (ABS.EQualFunCall ttyp (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
 
 tStmExp (ABS.ENaryFunCall (ABS.LIdent (_,cid)) args) = do
     targs <- HS.List <$> mapM tStmExp args
-    pure [hs| ($(HS.Var $ HS.UnQual $ HS.Ident cid) (sequence $targs)) |]
+    pure [hs| ($(HS.Var $ HS.UnQual $ HS.Ident cid) <$> (I'.sequence $targs)) |]
 
 
 tStmExp (ABS.ENaryQualFunCall ttyp (ABS.LIdent (_,cid)) args) = do
     targs <- HS.List <$> mapM tStmExp args
-    pure [hs| ($(HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid) (sequence $targs)) |]
+    pure [hs| ($(HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid) <$> (I'.sequence $targs)) |]
 
 -- constants
 tStmExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LNull)) = pure [hs| I'.pure True |]
@@ -78,12 +78,24 @@ tStmExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LThis)) = pure [hs| I'.pure 
 tStmExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.LIdent (p,str)))) = do
    scope <- ask
    tvar <- tStmExp pvar
-   pure $ case M.lookup ident scope of -- check the type of the right var
+   pure $ case M.lookup ident (scope `M.union` ?vars `M.union` ?fields) of -- check the type of the right var
             Just (ABS.TSimple qtyp) -> [hs| ((==) ($(HS.Var $ HS.UnQual $ HS.Ident (showQType qtyp)) null) <$> $tvar) |]
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " not in scope"
 -- commutative
 tStmExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit (ABS.LNull))) = tStmExp (ABS.EEq pnull pvar)
+
+-- optimization, to wrap null with the direct interface of rhs instead of up'
+tStmExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EThis ident@(ABS.LIdent (p,str)))) = do
+   scope <- ask
+   tvar <- tStmExp pvar
+   pure $ case M.lookup ident ?fields of -- check the type of the right var
+            Just (ABS.TSimple qtyp) -> [hs| ((==) ($(HS.Var $ HS.UnQual $ HS.Ident (showQType qtyp)) null) <$> $tvar) |]
+            Just _ -> errorPos p "cannot equate null to non-interface type"
+            Nothing -> errorPos p $ str ++ " not in scope"
+-- commutative
+tStmExp (ABS.EEq pvar@(ABS.EThis _) pnull@(ABS.ELit (ABS.LNull))) = tStmExp (ABS.EEq pnull pvar)
+
 
 -- tStmExp (ABS.EEq pvar1@(ABS.EVar ident1@(ABS.LIdent (p1,str1))) pvar2@(ABS.EVar ident2@(ABS.LIdent (p2,str2)))) _tyvars = do
 --   tvar1 <- tStmExp pvar1 _tyvars

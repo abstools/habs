@@ -81,6 +81,12 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                         , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "liftIO")])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad" 
+                        , HS.importQualified = True
+                        , HS.importAs = Just (HS.ModuleName "I'")
+                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "when"), HS.IVar (HS.Ident "sequence")])
+                        , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                        }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Prelude" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
@@ -198,9 +204,6 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                                                       
       tMain :: (?st::SymbolTable) => ABS.MaybeBlock -> [HS.Decl]
       tMain ABS.NoBlock = []
-      tMain (ABS.JustBlock _ block@(ABS.Bloc stms)) = 
-          if null stms
-          then [[dec| main = main_is' (\ this -> return ())|]]  -- necessary, otherwise empty-do error
-          else [[dec| main = main_is' (\ this -> $(tMethod block [] M.empty "")) |]] -- no params, no fields, empty class-name
+      tMain (ABS.JustBlock _ block) = [[dec| main = main_is' (\ this -> $(tMethod block [] M.empty "")) |]] -- no params, no fields, empty class-name
 
 

@@ -19,16 +19,18 @@ import Control.Monad.Trans.Reader (runReader, ask, local)
 import qualified Data.Map as M
 import Control.Applicative ((<|>))
 import Data.Foldable (foldlM)
+import Data.List (nub)
 
 import Control.Exception (assert)
 #define todo assert False
 
 tMethod :: (?st :: SymbolTable) => ABS.Block -> [ABS.Param] -> M.Map ABS.LIdent ABS.Type -> String -> HS.Exp
-tMethod (ABS.Bloc mbody) mparams fields cname = evalState (let ?fields = fields  -- fixed fields passed as an implicit param
-                                                               ?cname = cname    -- className needed for field pattern-matching
-                                                             in HS.Do . concat <$> mapM tStm mbody)
-                                          [M.empty, -- new scope
-                                           M.fromList (map (\ (ABS.Par t i) -> (i,t)) mparams)] -- first scope level is the formal params
+tMethod (ABS.Bloc mbody) mparams fields cname | null mbody = [hs| return ()|] -- necessary, otherwise empty-do error
+                                              | otherwise = evalState (let ?fields = fields  -- fixed fields passed as an implicit param
+                                                                           ?cname = cname    -- className needed for field pattern-matching
+                                                                       in HS.Do . concat <$> mapM tStm mbody)
+                                                            [M.empty, -- new scope
+                                                             M.fromList (map (\ (ABS.Par t i) -> (i,t)) mparams)] -- first scope level is the formal params
 
 
 ---------------- LOCAL VARIABLE ASSIGNMENT
@@ -710,8 +712,8 @@ tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
                             expWrapped = foldl (\ acc (ABS.LIdent (_, nextVar)) -> 
                                                     let nextIdent = HS.Ident nextVar 
                                                     in [hs| (\ ((nextIdent)) -> $acc) =<< I'.readIORef $(HS.Var $ HS.UnQual nextIdent)|])
-                                         [hs| I'.pure (\ this' -> $texp) |]
-                                         locals
+                                         [hs| I'.pure (\ this'' -> $texp) |]
+                                         (nub locals)
                         in [hs| awaitBool' this =<< I'.liftIO ($expWrapped) |]]
 
 
@@ -740,8 +742,8 @@ tStm (ABS.AnnStm _ (ABS.SIf pexp stmThen)) = do
     else do
       let tpred = runReader (let ?vars = localVars in tStmExp pexp) formalParams
       [HS.Qualifier tthen] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmThen])
-      pure [ HS.Generator noLoc (HS.PVar $ HS.Ident "when'") (maybeWrapThis tpred)
-           , HS.Qualifier [hs| when when' $tthen |]]
+      pure [ HS.Generator noLoc (HS.PVar $ HS.Ident "when'") (maybeWrapThis [hs| I'.liftIO $tpred |])
+           , HS.Qualifier [hs| I'.when when' $tthen |]]
 
 tStm (ABS.AnnStm _ (ABS.SIfElse pexp stmThen stmElse)) = do
   scopeLevels <- get
@@ -758,7 +760,7 @@ tStm (ABS.AnnStm _ (ABS.SIfElse pexp stmThen stmElse)) = do
       let tpred = runReader (let ?vars = localVars in tStmExp pexp) formalParams
       [HS.Qualifier tthen] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmThen])
       [HS.Qualifier telse] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmElse])
-      pure [ HS.Generator noLoc (HS.PVar $ HS.Ident "if'") (maybeWrapThis tpred)
+      pure [ HS.Generator noLoc (HS.PVar $ HS.Ident "if'") (maybeWrapThis [hs| I'.liftIO $tpred |])
            , HS.Qualifier [hs| if if' then $tthen else $telse |]]
 
 -- OTHER STATEMENTS
