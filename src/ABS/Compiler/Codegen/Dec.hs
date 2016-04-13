@@ -91,7 +91,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                                                                         <|> M.lookup (SN ident (Just (prefix, True))) ?st 
                                                    in case symbolType of
                                                         Interface _ _ -> [hs| $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp) null |]
-                                                        Foreign -> [hs| undefined |]
+                                                        Foreign -> [hs| (I'.error "foreign object not initialized") |]
                                                         _ -> errorPos p "A field must be initialised if it is not of a reference type"
                                                   ) : acc
                                -- it may be foreign (to be set to undefined)
@@ -102,7 +102,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                                                                 else M.lookup (SN ident (Just (prefix, False))) ?st 
                                                                                         <|> M.lookup (SN ident (Just (prefix, True))) ?st 
                                                    in case symbolType of
-                                                        Foreign -> [hs| undefined |]
+                                                        Foreign -> [hs| (I'.error "foreign object not initialized") |]
                                                         _ -> errorPos p "A field must be initialised if it is not of a reference type"
                                                   ) : acc
                                ABS.TUnderscore -> errorPos p "Cannot infer type of field which has not been assigned"

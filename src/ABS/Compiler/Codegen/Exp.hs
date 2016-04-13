@@ -20,7 +20,7 @@ import Data.Foldable (foldlM)
 -- | Translating the body of a pure function
 tFunBody :: ( ?st::SymbolTable, ?tyvars::[ABS.UIdent], ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 
            ABS.FunBody -> [ABS.Param] -> HS.Exp
-tFunBody ABS.BuiltinFunBody _params = [hs| undefined |] -- builtin turned to undefined
+tFunBody ABS.BuiltinFunBody _params = [hs| (I'.error "builtin called") |] -- builtin turned to undefined
 tFunBody (ABS.NormalFunBody pexp) params = runReader (tPureExp pexp) 
                                            (M.fromList $ map (\ (ABS.Par t i) -> (i,t)) params) -- initial function scope is the formal params
 

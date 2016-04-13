@@ -95,13 +95,12 @@ tAss _ t (ABS.LIdent (_,n)) (ABS.ExpE (ABS.NewLocal qcname args)) = do
                                                args) formalParams
               in [hs| I'.liftIO ((I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< (newlocal' this $initFun =<< $(maybeWrapThis smartApplied))) |] ]
 
-tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)) = do
+tAss a typ i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)) = do
   case pexp of
    ABS.EVar ident@(ABS.LIdent (_,calleeVar)) -> do
-    typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
-    case typ of
+    scopeLevels <- get
+    case M.lookup ident (M.unions scopeLevels) of      -- check type in the scopes
       Just (ABS.TSimple qtyp) -> do -- only interface type
-          scopeLevels <- get
           (locals,fields) <- unzip <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this')|])
@@ -114,16 +113,46 @@ tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mnam
                                                               (HS.Var $ HS.UnQual $ HS.Ident mname)
                                                               args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' $mapplied |]
-                      in [hs| (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< (($(maybeWrapThis mwrapped)) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |]
+                      in if ident `M.member` formalParams
+                         then maybeWrapThis [hs| (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< (($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+                         else maybeWrapThis [hs| (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< (($mwrapped) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |]
                  else let mapplied = runReader (let ?vars = localVars in foldlM
                                                          (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                                          [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
                                                          args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' =<< I'.liftIO ($mapplied) |]
-                      in [hs| (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< (($(maybeWrapThis mwrapped)) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |]
-               ]
-      Nothing -> errorPos p "cannot find variable"
-      _ -> errorPos p "invalid object callee type"
+                      in if ident `M.member` formalParams
+                         then maybeWrapThis [hs| (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< (($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+                         else maybeWrapThis [hs| (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< (($mwrapped) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |] ]
+      Just _ ->  errorPos p "caller variable not of interface type"
+      Nothing -> if ident `M.member` ?fields
+                then tAss a typ i (ABS.ExpE (ABS.SyncMethCall (ABS.EThis ident) (ABS.LIdent (p,mname)) args)) -- rewrite it to this.var
+                else errorPos p "cannot find variable"
+   ABS.EThis ident@(ABS.LIdent (p,calleeVar)) ->
+     case M.lookup ident ?fields of
+      Just (ABS.TSimple qtyp) -> do -- only interface type
+          scopeLevels <- get
+          (locals,fields) <- unzip <$> mapM depends args
+          let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+              (prefix, iident) = splitQType qtyp
+              iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+              fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ calleeVar ++ "'" ++ ?cname
+          pure [ HS.Qualifier $
+            if null (concat locals)
+            then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                         (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
+
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' $mapplied |]
+                 in [hs| (\ this'' -> (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< ($mwrapped ($fieldFun this''))) =<< I'.liftIO (I'.readIORef this') |]
+            else let mapplied = runReader (let ?vars = localVars in foldlM
+                                                    (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                                    [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]                                                    
+                                                    args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' =<< I'.liftIO ($mapplied) |]
+                  in [hs| (\ this'' -> (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< ($mwrapped ($fieldFun this''))) =<< I'.liftIO (I'.readIORef this') |] ]
+      Just _ -> errorPos p "caller field not of interface type"
+      Nothing -> errorPos p "no such field"
    ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
    _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
 
@@ -147,13 +176,12 @@ tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.LIdent (_,mname
                   maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
               in [hs| (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< ((this <..>) =<< I'.liftIO $(maybeWrapThis mapplied)) |] ]
 
-tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)) = do
+tAss a typ i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)) = do
  case pexp of
   ABS.EVar ident@(ABS.LIdent (_, calleeVar)) -> do
-    typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
-    case typ of
+    scopeLevels <- get
+    case M.lookup ident $ M.unions scopeLevels of -- check type in the scopes
       Just (ABS.TSimple qtyp) -> do -- only interface type
-          scopeLevels <- get
           (locals,fields) <- unzip <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
@@ -165,16 +193,47 @@ tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mna
                                                          (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                          (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!> $mapplied) |]
-                          ioAction = [hs| I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (($mwrapped) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+                          ioAction = if ident `M.member` formalParams
+                                     then [hs| I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+                                     else [hs| I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (($mwrapped) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+
                       in [hs| I'.liftIO $(maybeWrapThis ioAction) |]
                  else let mapplied = runReader (let ?vars = localVars in foldlM
                                                                             (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                                                             [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
                                                                             args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!>) =<< $mapplied |]
-                      in [hs| I'.liftIO (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (($(maybeWrapThis mwrapped)) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |] ]
-      Nothing -> errorPos p "cannot find variable"
+                      in if ident `M.member` formalParams
+                         then [hs| I'.liftIO (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (($(maybeWrapThis mwrapped)) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |] 
+                         else [hs| I'.liftIO (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (($(maybeWrapThis mwrapped)) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |] ]
+      Nothing -> if ident `M.member` ?fields
+                then tAss a typ i (ABS.ExpE (ABS.AsyncMethCall (ABS.EThis ident) (ABS.LIdent (p,mname)) args)) -- rewrite it to this.var
+                else errorPos p "cannot find variable"
       _ -> errorPos p "invalid object callee type"
+  ABS.EThis ident@(ABS.LIdent (p,calleeVar)) ->
+    case M.lookup ident ?fields of
+      Just (ABS.TSimple qtyp) -> do -- only interface type
+          scopeLevels <- get
+          (locals,fields) <- unzip <$> mapM depends args
+          let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+              (prefix, iident) = splitQType qtyp
+              iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+              fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ calleeVar ++ "'" ++ ?cname
+          pure [HS.Qualifier $ 
+            if null (concat locals)
+            then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                         (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!> $mapplied) |]
+                 in [hs| I'.liftIO ((\ this'' -> I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< ($mwrapped ($fieldFun this''))) =<< I'.readIORef this') |]
+            else let mapplied = runReader (let ?vars = localVars in foldlM
+                                                    (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                                    [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]                                                    
+                                                    args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!>) =<< $mapplied |]
+                 in [hs| I'.liftIO ((\ this'' -> I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< ($mwrapped ($fieldFun this''))) =<< I'.readIORef this') |] ]
+      Just _ -> errorPos p "caller field not of interface type"
+      Nothing -> errorPos p "no such field"
   ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
 
@@ -277,7 +336,7 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.NewLocal q
               in [hs| I'.liftIO ((I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< (newlocal' this $initFun =<< $(maybeWrapThis smartApplied))) |] ]
 
 
-tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
+tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
   case pexp of
    ABS.EVar ident@(ABS.LIdent (_, calleeVar)) -> do
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
@@ -297,15 +356,47 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.SyncMethCa
                                                               (HS.Var $ HS.UnQual $ HS.Ident mname)
                                                               args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' $mapplied |]
-                      in [hs| (I'.liftIO . I'.newIORef) =<< (($(maybeWrapThis mwrapped)) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |]
+                      in if ident `M.member` formalParams
+                         then maybeWrapThis [hs| (I'.liftIO . I'.newIORef) =<< (($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+                         else maybeWrapThis [hs| (I'.liftIO . I'.newIORef) =<< (($mwrapped) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |]
                  else let mapplied = runReader (let ?vars = localVars in foldlM
                                                          (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                                          [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
                                                          args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' =<< I'.liftIO ($mapplied) |]
-                      in [hs| (I'.liftIO . I'.newIORef) =<< (($(maybeWrapThis mwrapped)) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |] ]
-      Nothing -> errorPos p "cannot find variable"
-      _ -> errorPos p "invalid object callee type"
+                      in if ident `M.member` formalParams
+                         then maybeWrapThis [hs| (I'.liftIO . I'.newIORef) =<< (($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+                         else maybeWrapThis [hs| (I'.liftIO . I'.newIORef) =<< (($mwrapped) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |] ]
+      Just _ ->  errorPos p "caller variable not of interface type"
+      Nothing -> if ident `M.member` ?fields
+                then tStm (ABS.AnnStm a (ABS.SDecAss t i (ABS.ExpE (ABS.AsyncMethCall (ABS.EThis ident) (ABS.LIdent (p,mname)) args)))) -- rewrite it to this.var
+                else errorPos p "cannot find variable"
+   ABS.EThis ident@(ABS.LIdent (p,calleeVar)) ->
+     case M.lookup ident ?fields of
+      Just (ABS.TSimple qtyp) -> do -- only interface type
+          scopeLevels <- addToScope t i
+          (locals,fields) <- unzip <$> mapM depends args
+          let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+              (prefix, iident) = splitQType qtyp
+              iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+              fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ calleeVar ++ "'" ++ ?cname
+          pure [HS.Generator noLoc 
+                (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) $
+            if null (concat locals)
+            then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                         (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
+
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' $mapplied |]
+                 in [hs| (\ this'' -> (I'.liftIO . I'.newIORef) =<< ($mwrapped ($fieldFun this''))) =<< I'.liftIO (I'.readIORef this') |]
+            else let mapplied = runReader (let ?vars = localVars in foldlM
+                                                    (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                                    [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]                                                    
+                                                    args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' =<< I'.liftIO ($mapplied) |]
+                  in [hs| (\ this'' -> (I'.liftIO . I'.newIORef) =<< ($mwrapped ($fieldFun this''))) =<< I'.liftIO (I'.readIORef this') |] ]
+      Just _ -> errorPos p "caller field not of interface type"
+      Nothing -> errorPos p "no such field"
    ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
    _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
 
@@ -330,7 +421,7 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.ThisSyncMe
                   maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
               in [hs| (I'.liftIO . I'.newIORef) =<< ((this <..>) =<< I'.liftIO $(maybeWrapThis mapplied)) |] ]
 
-tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
+tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
  case pexp of
   ABS.EVar ident@(ABS.LIdent (_,calleeVar)) -> do
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
@@ -349,16 +440,47 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.AsyncMethC
                                                          (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                          (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!> $mapplied) |]
-                          ioAction = [hs| I'.newIORef =<< (($mwrapped) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+                          ioAction = if ident `M.member` formalParams
+                                     then [hs| I'.newIORef =<< (($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+                                     else [hs| I'.newIORef =<< (($mwrapped) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
                       in [hs| I'.liftIO $(maybeWrapThis ioAction) |]
                  else let mapplied = runReader (let ?vars = localVars in foldlM 
                                                                             (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                                                             [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
                                                                             args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!>) =<< $mapplied |]
-                      in [hs| I'.liftIO (I'.newIORef =<< (($(maybeWrapThis mwrapped)) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |] ]
-      Nothing -> errorPos p "cannot find variable"
+                      in if ident `M.member` formalParams
+                         then [hs| I'.liftIO (I'.newIORef =<< (($(maybeWrapThis mwrapped)) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |]
+                         else [hs| I'.liftIO (I'.newIORef =<< (($(maybeWrapThis mwrapped)) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |] ]
+      Nothing -> if ident `M.member` ?fields
+                then tStm (ABS.AnnStm a (ABS.SDecAss t i (ABS.ExpE (ABS.AsyncMethCall (ABS.EThis ident) (ABS.LIdent (p,mname)) args)))) -- rewrite it to this.var
+                else errorPos p "cannot find variable"
       _ -> errorPos p "invalid object callee type"
+  ABS.EThis ident@(ABS.LIdent (p,calleeVar)) ->
+    case M.lookup ident ?fields of
+      Just (ABS.TSimple qtyp) -> do -- only interface type
+          scopeLevels <- addToScope t i
+          (locals,fields) <- unzip <$> mapM depends args
+          let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+              (prefix, iident) = splitQType qtyp
+              iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+              fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ calleeVar ++ "'" ++ ?cname
+          pure [HS.Generator noLoc 
+                (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) $
+            if null (concat locals)
+            then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                         (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!> $mapplied) |]
+                 in [hs| I'.liftIO ((\ this'' -> I'.newIORef =<< ($mwrapped ($fieldFun this''))) =<< I'.readIORef this') |]
+            else let mapplied = runReader (let ?vars = localVars in foldlM
+                                                    (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                                    [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]                                                    
+                                                    args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!>) =<< $mapplied |]
+                 in [hs| I'.liftIO ((\ this'' -> I'.newIORef =<< ($mwrapped ($fieldFun this''))) =<< I'.readIORef this') |] ]
+      Just _ -> errorPos p "caller field not of interface type"
+      Nothing -> errorPos p "no such field"
   ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
 
@@ -478,17 +600,17 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss i@(ABS.LIdent (_,field)) (ABS.ExpE (ABS.NewLoc
 
 
 
-tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.LIdent (_,field)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
+tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.LIdent (_,field)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
   case pexp of
    ABS.EVar ident@(ABS.LIdent (_,calleeVar)) -> do
-    typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
-    case typ of
+    scopeLevels <- get
+    case M.lookup ident (M.unions scopeLevels) of -- check type in the scopes
       Just (ABS.TSimple qtyp) -> do -- only interface type
-          scopeLevels <- get
           (locals,_) <- unzip <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               (prefix, iident) = splitQType qtyp
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+              recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
           pure [ HS.Qualifier $
                  if null (concat locals)
                  then let mapplied = runReader (let ?tyvars = [] in foldlM
@@ -496,8 +618,11 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.LIdent (_,field)) (ABS.ExpE (ABS.SyncMeth
                                                               (HS.Var $ HS.UnQual $ HS.Ident mname)
                                                               args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' $mapplied |]
-                          recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
-                      in [hs| (I'.liftIO . I'.writeIORef this') =<< 
+                      in if ident `M.member` formalParams
+                         then [hs| (I'.liftIO . I'.writeIORef this') =<< 
+                               (( \ this'' -> (\ v' -> $recordUpdate) <$> (($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)))
+                                =<< I'.liftIO (I'.readIORef this')) |]
+                         else [hs| (I'.liftIO . I'.writeIORef this') =<< 
                               (( \ this'' -> 
                                      (\ v' -> $recordUpdate) <$> (($mwrapped) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)))
                                ) =<< I'.liftIO (I'.readIORef this')) |]
@@ -506,13 +631,43 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.LIdent (_,field)) (ABS.ExpE (ABS.SyncMeth
                                                          [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
                                                          args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' =<< I'.liftIO ($mapplied) |]
-                          recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
-                      in [hs| (I'.liftIO . I'.writeIORef this') =<< 
+                      in if ident `M.member` formalParams
+                         then [hs| (I'.liftIO . I'.writeIORef this') =<< 
+                               (( \ this'' -> (\ v' -> $recordUpdate) <$> (($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)))
+                                =<< I'.liftIO (I'.readIORef this')) |]
+                         else [hs| (I'.liftIO . I'.writeIORef this') =<< 
                               (( \ this'' -> 
                                      (\ v' -> $recordUpdate) <$> (($mwrapped) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)))
-                               ) =<< I'.liftIO (I'.readIORef this')) |]]
-      Nothing -> errorPos p "cannot find variable"
-      _ -> errorPos p "invalid object callee type"
+                               ) =<< I'.liftIO (I'.readIORef this')) |] ]
+      Just _ ->  errorPos p "caller variable not of interface type"
+      Nothing -> if ident `M.member` ?fields
+                then tStm (ABS.AnnStm a (ABS.SFieldAss i (ABS.ExpE (ABS.SyncMethCall (ABS.EThis ident) (ABS.LIdent (p,mname)) args)))) -- rewrite it to this.var
+                else errorPos p "cannot find variable"
+   ABS.EThis ident@(ABS.LIdent (p,calleeVar)) ->
+     case M.lookup ident ?fields of
+      Just (ABS.TSimple qtyp) -> do -- only interface type
+          scopeLevels <- get
+          (locals,fields) <- unzip <$> mapM depends args
+          let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+              (prefix, iident) = splitQType qtyp
+              iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+              fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ calleeVar ++ "'" ++ ?cname
+              recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
+          pure [ HS.Qualifier $
+            if null (concat locals)
+            then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                         (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' $mapplied |]
+                 in [hs| (I'.liftIO . I'.writeIORef this') =<< ((\ this'' -> (\ v' -> $recordUpdate) <$> ($mwrapped ($fieldFun this''))) =<< I'.liftIO (I'.readIORef this')) |]
+            else let mapplied = runReader (let ?vars = localVars in foldlM
+                                                    (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                                    [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]                                                    
+                                                    args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' =<< I'.liftIO ($mapplied) |]
+                 in [hs| (I'.liftIO . I'.writeIORef this') =<< ((\ this'' -> (\ v' -> $recordUpdate) <$> ($mwrapped ($fieldFun this''))) =<< I'.liftIO (I'.readIORef this')) |] ]
+      Just _ -> errorPos p "caller field not of interface type"
+      Nothing -> errorPos p "no such field"
    ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
    _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
 
@@ -537,25 +692,30 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.LIdent (_,field)) (ABS.ExpE (ABS.ThisSync
               in [hs| (I'.liftIO . I'.writeIORef this') =<< 
                       ((\ this'' -> (\ v' -> $recordUpdate) <$> ((this <..>) =<< I'.liftIO ($mapplied))) =<< I'.liftIO (I'.readIORef this')) |]]
 
-tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.LIdent (_,field)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
+tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.LIdent (_,field)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
  case pexp of
   ABS.EVar ident@(ABS.LIdent (_, calleeVar)) -> do
-    typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
-    case typ of
+    scopeLevels <- get
+    case M.lookup ident $ M.unions scopeLevels of -- check type in the scopes
       Just (ABS.TSimple qtyp) -> do -- only interface type
-          scopeLevels <- get
           (locals,_) <- unzip <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               (prefix, iident) = splitQType qtyp
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+              recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
           pure [HS.Qualifier $
                  if null (concat locals)
                  then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                          (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                          (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!> $mapplied) |]
-                          recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
-                      in [hs| I'.liftIO 
+                      in if ident `M.member` formalParams
+                         then [hs| I'.liftIO 
+                              (I'.writeIORef this' =<< (\ this'' -> 
+                                                        (\ v' -> $recordUpdate) <$> (($mwrapped) 
+                                                                                   $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) 
+                                                        =<< I'.readIORef this') |]
+                         else [hs| I'.liftIO 
                               (I'.writeIORef this' =<< (\ this'' -> 
                                                         (\ v' -> $recordUpdate) <$> (($mwrapped) 
                                                                                    =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) 
@@ -565,14 +725,46 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.LIdent (_,field)) (ABS.ExpE (ABS.AsyncMet
                                                                             [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
                                                                             args) formalParams
                           mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!>) =<< $mapplied |]
-                          recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
-                      in [hs| I'.liftIO 
+                      in if ident `M.member` formalParams
+                         then [hs| I'.liftIO 
+                              (I'.writeIORef this' =<< (\ this'' -> 
+                                                        (\ v' -> $recordUpdate) <$> (($mwrapped) 
+                                                                                   $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) 
+                                                        =<< I'.readIORef this') |]
+                         else [hs| I'.liftIO 
                               (I'.writeIORef this' =<< (\ this'' -> 
                                                         (\ v' -> $recordUpdate) <$> (($mwrapped) 
                                                                                    =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) 
                                                         =<< I'.readIORef this') |]]
-      Nothing -> errorPos p "cannot find variable"
+      Nothing -> if ident `M.member` ?fields
+                then tStm (ABS.AnnStm a (ABS.SFieldAss i (ABS.ExpE (ABS.AsyncMethCall (ABS.EThis ident) (ABS.LIdent (p,mname)) args))))
+                else errorPos p "cannot find variable"
       _ -> errorPos p "invalid object callee type"
+  ABS.EThis ident@(ABS.LIdent (p,calleeVar)) ->
+    case M.lookup ident ?fields of
+      Just (ABS.TSimple qtyp) -> do -- only interface type
+          scopeLevels <- get
+          (locals,fields) <- unzip <$> mapM depends args
+          let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+              (prefix, iident) = splitQType qtyp
+              iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+              fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ calleeVar ++ "'" ++ ?cname
+              recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
+          pure [HS.Qualifier $
+            if null (concat locals)
+            then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                         (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!> $mapplied) |]
+                 in [hs| I'.liftIO (I'.writeIORef this' =<< (\ this'' -> (\ v' -> $recordUpdate) <$> ($mwrapped ($fieldFun this''))) =<< I'.readIORef this') |]
+            else let mapplied = runReader (let ?vars = localVars in foldlM
+                                                    (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                                    [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]                                                    
+                                                    args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| (obj' <!>) =<< $mapplied |]
+                 in [hs| I'.liftIO (I'.writeIORef this' =<< (\ this'' -> (\ v' -> $recordUpdate) <$> ($mwrapped ($fieldFun this''))) =<< I'.readIORef this') |] ]
+      Just _ -> errorPos p "caller field not of interface type"
+      Nothing -> errorPos p "no such field"
   ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
 
@@ -656,7 +848,7 @@ tStm (ABS.AnnStm _ (ABS.SDec t i@(ABS.LIdent (p,n)))) = case t of
                                                       [hs| I'.liftIO (I'.newIORef ($(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp) null)) |] ]
                           Foreign -> do
                             _ <- addToScope t i
-                            pure [HS.Generator noLoc (HS.PVar $ HS.Ident n) [hs| I'.liftIO (I'.newIORef undefined) |] ] -- undefined if foreign
+                            pure [HS.Generator noLoc (HS.PVar $ HS.Ident n) [hs| I'.liftIO (I'.newIORef (I'.error "foreign object not initialized")) |] ] -- undefined if foreign
                           _ -> errorPos p "A field must be initialised if it is not of a reference type"
 
 
@@ -696,7 +888,7 @@ tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
     -- currently, no solution to the cosimo problem
     tGuard (ABS.FutFieldGuard (ABS.LIdent (_, fname))) = do
       let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ fname ++ "'" ++ ?cname
-      pure [HS.Qualifier [hs| (awaitFuture' this . $fieldFun) =<< I'.liftIO (I'.readIORef this) |]]
+      pure [HS.Qualifier [hs| (awaitFuture' this . $fieldFun) =<< I'.liftIO (I'.readIORef this') |]]
 
     tGuard (ABS.ExpGuard pexp) = do
       (locals, fields) <- depends pexp
@@ -864,15 +1056,14 @@ tEffExp (ABS.NewLocal qcname args) _ = do
              in pure [hs| I'.liftIO (newlocal' this $initFun =<< $(maybeWrapThis smartApplied)) |]
 
 
-tEffExp (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args) _ = case pexp of
+tEffExp (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args) _isAlone = case pexp of
   ABS.EVar ident@(ABS.LIdent (_,calleeVar)) -> do
-    typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
-    case typ of
+    scopeLevels <- get
+    case M.lookup ident (M.unions scopeLevels) of -- check type in the scopes
       Just (ABS.TSimple qtyp) -> do -- only interface type
-          scopeLevels <- get
           (locals,fields) <- unzip <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
-              maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'liftIO (I'.readIORef this')|])
+              maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this')|])
               (prefix, iident) = splitQType qtyp
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
           if null (concat locals)
@@ -881,15 +1072,44 @@ tEffExp (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args) _ = case pexp of
                                                          (HS.Var $ HS.UnQual $ HS.Ident mname)
                                                          args) formalParams
                      mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' $mapplied |]
-                 in pure [hs| ($(maybeWrapThis mwrapped)) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+                 in pure $ if ident `M.member` formalParams
+                           then maybeWrapThis [hs| ($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar) |]
+                           else maybeWrapThis [hs| ($mwrapped) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
             else let mapplied = runReader (let ?vars = localVars in foldlM
                                                     (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                                     [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
                                                     args) formalParams
                      mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' =<< I'.liftIO ($mapplied) |]
-                 in pure [hs| ($(maybeWrapThis mwrapped)) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
-      Nothing -> errorPos p "cannot find variable"
-      _ -> errorPos p "invalid object callee type"
+                 in pure $ if ident `M.member` formalParams
+                           then maybeWrapThis [hs| ($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar) |]
+                           else maybeWrapThis [hs| ($mwrapped) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+      Just _ ->  errorPos p "caller variable not of interface type"
+      Nothing -> if ident `M.member` ?fields
+                then tEffExp (ABS.SyncMethCall (ABS.EThis ident) (ABS.LIdent (p,mname)) args) _isAlone -- rewrite it to this.var
+                else errorPos p "cannot find variable"
+  ABS.EThis ident@(ABS.LIdent (p,calleeVar)) ->
+    case M.lookup ident ?fields of
+      Just (ABS.TSimple qtyp) -> do -- only interface type
+          scopeLevels <- get
+          (locals,fields) <- unzip <$> mapM depends args
+          let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+              (prefix, iident) = splitQType qtyp
+              iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+              fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ calleeVar ++ "'" ++ ?cname
+          if null (concat locals)
+            then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                         (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' $mapplied |]
+                 in pure [hs| (\ this'' -> $mwrapped ($fieldFun this'')) =<< I'.liftIO (I'.readIORef this') |]
+            else let mapplied = runReader (let ?vars = localVars in foldlM
+                                                    (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                                    [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]                                                    
+                                                    args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs| sync' this obj' =<< I'.liftIO ($mapplied) |]
+                 in pure [hs| (\ this'' -> $mwrapped ($fieldFun this'')) =<< I'.liftIO (I'.readIORef this') |]
+      Just _ -> errorPos p "caller field not of interface type"
+      Nothing -> errorPos p "no such field"
   ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
 
@@ -913,10 +1133,9 @@ tEffExp (ABS.ThisSyncMethCall (ABS.LIdent (_,mname)) args) _ = do
 
 tEffExp (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args) isAlone = case pexp of
   ABS.EVar ident@(ABS.LIdent (_,calleeVar)) -> do
-    typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
-    case typ of
-      Just (ABS.TSimple qtyp) -> do -- only interface type
-          scopeLevels <- get
+    scopeLevels <- get
+    case M.lookup ident (M.unions scopeLevels) of -- check type in the scopes
+      Just (ABS.TSimple qtyp) -> do -- only interface type allowed
           (locals,fields) <- unzip <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
@@ -929,7 +1148,9 @@ tEffExp (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args) isAlone = case pexp
                      mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] $ if isAlone
                                                                                                then [hs| (obj' <!!> $mapplied) |] -- optimized, fire&forget
                                                                                                else [hs| (obj' <!> $mapplied) |]
-                 in pure [hs| I'.liftIO (($(maybeWrapThis mwrapped)) =<< (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |]
+                 in pure $ if ident `M.member` formalParams
+                           then [hs| I'.liftIO (($(maybeWrapThis mwrapped)) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+                           else [hs| I'.liftIO (($(maybeWrapThis mwrapped)) =<< (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |]
             else let mapplied = runReader (let ?vars = localVars in foldlM
                                                     (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                                     [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]                                                    
@@ -937,10 +1158,40 @@ tEffExp (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args) isAlone = case pexp
                      mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] $ if isAlone
                                                                                                then [hs| (obj' <!!>) =<< $mapplied |] -- optimized, fire&forget
                                                                                                else [hs| (obj' <!>) =<< $mapplied |]
-                 in pure [hs| I'.liftIO (($(maybeWrapThis mwrapped)) =<< (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |]
-
-      Nothing -> errorPos p "cannot find variable"
-      _ -> errorPos p "invalid object callee type"
+                 in pure $ if ident `M.member` formalParams
+                           then [hs| I'.liftIO (($(maybeWrapThis mwrapped)) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)) |]
+                           else [hs| I'.liftIO (($(maybeWrapThis mwrapped)) =<< (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))) |]
+      Just _ ->  errorPos p "caller variable not of interface type"
+      Nothing -> if ident `M.member` ?fields
+                then tEffExp (ABS.AsyncMethCall (ABS.EThis ident) (ABS.LIdent (p,mname)) args) isAlone -- rewrite it to this.var
+                else errorPos p "cannot find variable"
+  ABS.EThis ident@(ABS.LIdent (p,calleeVar)) ->
+    case M.lookup ident ?fields of
+      Just (ABS.TSimple qtyp) -> do -- only interface type
+          scopeLevels <- get
+          (locals,fields) <- unzip <$> mapM depends args
+          let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+              (prefix, iident) = splitQType qtyp
+              iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+              fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ calleeVar ++ "'" ++ ?cname
+          if null (concat locals)
+            then let mapplied = runReader (let ?tyvars = [] in foldlM
+                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                         (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] $ if isAlone
+                                                                                               then [hs| (obj' <!!> $mapplied) |] -- optimized, fire&forget
+                                                                                               else [hs| (obj' <!> $mapplied) |]
+                 in pure [hs| I'.liftIO ((\ this'' -> $mwrapped ($fieldFun this'')) =<< I'.readIORef this') |]
+            else let mapplied = runReader (let ?vars = localVars in foldlM
+                                                    (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                                    [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]                                                    
+                                                    args) formalParams
+                     mwrapped = HS.Lambda noLoc [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] $ if isAlone
+                                                                                               then [hs| (obj' <!!>) =<< $mapplied |] -- optimized, fire&forget
+                                                                                               else [hs| (obj' <!>) =<< $mapplied |]
+                 in pure [hs| I'.liftIO ((\ this'' -> $mwrapped ($fieldFun this'')) =<< I'.readIORef this') |]
+      Just _ -> errorPos p "caller field not of interface type"
+      Nothing -> errorPos p "no such field"
   ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
   
