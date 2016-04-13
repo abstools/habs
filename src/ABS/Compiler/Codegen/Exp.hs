@@ -8,14 +8,15 @@ import ABS.Compiler.Codegen.Base
 import ABS.Compiler.Utils
 import ABS.Compiler.Codegen.Typ
 import ABS.Compiler.Codegen.Pat
-import ABS.Compiler.Firstpass.Base (SymbolTable) 
+import ABS.Compiler.Firstpass.Base
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
-import qualified Data.Map as M (Map, fromList, insert, member, lookup, union)
+import qualified Data.Map as M (Map, fromList, insert, member, lookup, union, assocs)
 import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
+import Data.List (find)
 
 -- | Translating the body of a pure function
 tFunBody :: ( ?st::SymbolTable, ?tyvars::[ABS.UIdent], ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 
@@ -80,7 +81,7 @@ tPureExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.LIdent (p
    pure $ case M.lookup ident (scope `M.union` ?fields) of -- check the type of the right var
             Just (ABS.TSimple qtyp) -> [hs| ( $(HS.Var $ HS.UnQual $ HS.Ident (showQType qtyp)) null == $tvar ) |]
             Just _ -> errorPos p "cannot equate null to non-interface type"
-            Nothing -> errorPos p $ str ++ " not in scope"
+            Nothing -> errorPos p $ str ++ " variable not in scope or has foreign type"
 -- commutative
 tPureExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit (ABS.LNull))) = tPureExp (ABS.EEq pnull pvar)
 
@@ -176,7 +177,9 @@ tPureExp (ABS.EVar var@(ABS.LIdent (p,pid))) = do
                       then errorPos p "cannot access fields in pure context"
                       else let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname
                            in [hs| ($fieldFun this'') |] -- accessor
-                 else errorPos p $ pid ++ " not in scope"
+                 else case find (\ (SN ident' modul,_) -> pid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
+                        Just (_,SV Foreign _) -> HS.Var $ HS.UnQual $ HS.Ident pid
+                        _ ->  HS.Var $ HS.UnQual $ HS.Ident pid -- errorPos p $ pid ++ " not in scope"
                 -- HS.Paren $ (if isInterface t
                 --             then HS.App (HS.Var $ identI "up") -- upcasting if it is of a class type
                 --             else id) 

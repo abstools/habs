@@ -8,7 +8,6 @@ import ABS.Compiler.Utils
 import ABS.Compiler.Codegen.Dec (tDecl)
 import ABS.Compiler.Codegen.Stm (tMethod)
 
-
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Language.Haskell.Exts.QQ (dec)
@@ -177,12 +176,12 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
       tImport (ABS.AnyImport _ityp ttyp aid) = HS.ImportDecl noLoc (HS.ModuleName $ showTType ttyp)
                                                True -- qualified?
                                                False False Nothing Nothing -- irrelevant
-                                               (Just (False, tImport' (showTType ttyp, False) aid)) -- only import this 1 symbol (normally many,  but grammar limitation)
+                                               (Just (False, tImport' (showTType ttyp, True) aid)) -- only import this 1 symbol (normally many,  but grammar limitation)
 
       tImport (ABS.AnyFromImport _ityp aids qtyp) = HS.ImportDecl noLoc (HS.ModuleName (showQType qtyp)) 
                                                     False -- qualified?
                                                     False False Nothing Nothing -- irrelevant
-                                                    (Just (False, concatMap (tImport' (showQType qtyp, True)) aids)) -- only  import those symbols
+                                                    (Just (False, concatMap (tImport' (showQType qtyp, False)) aids)) -- only  import those symbols
 
       tImport' :: (ModuleName,IsQualified) -> ABS.AnyIdent -> [HS.ImportSpec]
       tImport' k iden = 

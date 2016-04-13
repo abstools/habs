@@ -10,14 +10,15 @@ import ABS.Compiler.Codegen.Base
 import ABS.Compiler.Utils
 import ABS.Compiler.Codegen.Typ
 import ABS.Compiler.Codegen.Pat
-import ABS.Compiler.Firstpass.Base (SymbolTable) 
+import ABS.Compiler.Firstpass.Base
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
-import qualified Data.Map as M (Map, fromList, insert, member, lookup, union)
+import qualified Data.Map as M (Map, fromList, insert, member, lookup, union, assocs)
 import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
+import Data.List (find)
 
 -- | Translating a pure expression augmented to work with mutable local variables & fields of the statement world
 tStmExp :: ( ?st::SymbolTable, ?vars::M.Map ABS.LIdent ABS.Type, ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 
@@ -51,10 +52,15 @@ tStmExp (ABS.Case ofE branches) = do
                , HS.Qualifier tcase
                ]
 
-tStmExp (ABS.EFunCall (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
-                                                    (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
-                                                    [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident cid) |]
-                                                    args
+tStmExp (ABS.EFunCall (ABS.LIdent (_,cid)) args) =  case find (\ (SN ident' modul,_) -> cid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
+                                                      Just (_,SV Foreign _) -> HS.Paren <$> foldlM
+                                                                              (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| ($acc =<< $targ) |])
+                                                                              [hs| $(HS.Var $ HS.UnQual $ HS.Ident cid) |] -- impure
+                                                                              args
+                                                      _ ->  HS.Paren <$> foldlM
+                                                           (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
+                                                           [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident cid) |]
+                                                           args
 tStmExp (ABS.EQualFunCall ttyp (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
                                                              (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                                              [hs| I'.pure $(HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid) |]
@@ -81,7 +87,7 @@ tStmExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.LIdent (p,
    pure $ case M.lookup ident (scope `M.union` ?vars `M.union` ?fields) of -- check the type of the right var
             Just (ABS.TSimple qtyp) -> [hs| ((==) ($(HS.Var $ HS.UnQual $ HS.Ident (showQType qtyp)) null) <$> $tvar) |]
             Just _ -> errorPos p "cannot equate null to non-interface type"
-            Nothing -> errorPos p $ str ++ " not in scope"
+            Nothing -> errorPos p $ str ++ " variable not in scope or has foreign type"
 -- commutative
 tStmExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit (ABS.LNull))) = tStmExp (ABS.EEq pnull pvar)
 
@@ -190,7 +196,9 @@ tStmExp (ABS.EVar var@(ABS.LIdent (p,pid))) = do
                            then errorPos p "cannot access fields here"
                            else let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname
                                 in [hs| I'.pure ($fieldFun this'') |] -- accessor
-                 else errorPos p $ pid ++ " not in scope"
+                 else case find (\ (SN ident' modul,_) -> pid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
+                        Just (_,SV Foreign _) -> HS.Var $ HS.UnQual $ HS.Ident pid
+                        _ ->  HS.Var $ HS.UnQual $ HS.Ident pid -- errorPos p $ pid ++ " not in scope"
                 -- HS.Paren $ (if isInterface t
                 --             then HS.App (HS.Var $ identI "up") -- upcasting if it is of a class type
                 --             else id) 

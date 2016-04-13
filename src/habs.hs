@@ -9,8 +9,10 @@ import ABS.Compiler.CmdOpt
 import ABS.Compiler.Firstpass.SymbolTable
 import ABS.Compiler.Codegen.Mod (tModul)
 
+import Control.Monad (when)
 import System.FilePath ((</>))
 import System.Directory (createDirectoryIfMissing)
+import System.IO (hPrint, stderr)
 
 -- | The habs translator executable
 main :: IO ()
@@ -20,6 +22,7 @@ main =
   else do
      -- 0. parse all modules to their ASTs
      modules <- concatMap (\ (_,Ok (ABS.Prog ms)) -> ms) . concat <$> mapM parseFileOrDir (src_files cmdOpt)
+     when (dump_ast cmdOpt) $ mapM_ (hPrint stderr) modules
      -- 1.st-pass: build the symboltables
      let symbolTables = globalSTs modules
      -- 2.nd-pass: generate code
