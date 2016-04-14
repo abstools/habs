@@ -25,11 +25,16 @@ import Control.Exception (assert)
 #define todo assert False
 
 tMethod :: (?st :: SymbolTable) => ABS.Block -> [ABS.Param] -> M.Map ABS.LIdent ABS.Type -> String -> [String] -> HS.Exp
-tMethod (ABS.Bloc mbody) mparams fields cname cAloneMethods | null mbody = [hs| return () |] -- necessary, otherwise empty-do error
-                                                            | otherwise = evalState (let ?fields = fields  -- fixed fields passed as an implicit param
-                                                                                         ?cname = cname    -- className needed for field pattern-matching
-                                                                                         ?cAloneMethods = cAloneMethods
-                                                                                     in HS.Do . concat <$> mapM tStm mbody)
+tMethod (ABS.Bloc mbody) mparams fields cname cAloneMethods  = evalState (let ?fields = fields  -- fixed fields passed as an implicit param
+                                                                              ?cname = cname    -- className needed for field pattern-matching
+                                                                              ?cAloneMethods = cAloneMethods
+                                                                          in do
+                                                                            tstms <- concat <$> mapM tStm mbody
+                                                                            pure $ if null tstms
+                                                                                   then [hs| return () |] -- otherwise empty rhs
+                                                                                   else HS.Do $ case last tstms of 
+                                                                                                  HS.Generator _ _ _ ->  tstms ++ [HS.Qualifier $ [hs| I'.pure () |]]
+                                                                                                  _ -> tstms)
                                                             [M.empty, -- new scope
                                                              M.fromList (map (\ (ABS.Par t i) -> (i,t)) mparams)] -- first scope level is the formal params
 
@@ -831,21 +836,33 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.LIdent (_,field)) (ABS.ExpE (ABS.Get pexp
 
 ------------------------- RETURN , STANDALONE EXPRESSION
 
-tStm (ABS.AnnStm _ (ABS.SReturn (ABS.ExpE eexp))) = return . HS.Qualifier <$> tEffExp eexp False -- not standalone, because we have to capture and return its result
-tStm (ABS.AnnStm a (ABS.SReturn (ABS.ExpP pexp))) = tStm (ABS.AnnStm a (ABS.SExp (ABS.ExpP pexp))) -- rewrite to standalone
+tStm (ABS.AnnStm _ (ABS.SReturn (ABS.ExpE eexp))) = return . HS.Qualifier <$> tEffExp eexp False -- keep the result
+tStm (ABS.AnnStm _ (ABS.SReturn (ABS.ExpP pexp))) = do
+  scopeLevels <- get
+  (locals, fields,hasForeigns) <- depends pexp
+  let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+  pure $ [HS.Qualifier $        -- keep the result
+          if null locals && not hasForeigns
+          then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+                   maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this')|])
+               in maybeWrapThis [hs| I'.pure $texp |]
+          else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+                   maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
+               in [hs| I'.liftIO $(maybeWrapThis texp) |] ]
 
-tStm (ABS.AnnStm _ (ABS.SExp (ABS.ExpE eexp))) = return . HS.Qualifier <$> tEffExp eexp True
+tStm (ABS.AnnStm _ (ABS.SExp (ABS.ExpE eexp))) = return . HS.Generator noLoc HS.PWildCard <$> tEffExp eexp True -- throw away the result
 tStm (ABS.AnnStm _ (ABS.SExp (ABS.ExpP pexp))) = do
   scopeLevels <- get
   (locals, fields,hasForeigns) <- depends pexp
   let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
-  if null locals && not hasForeigns
-    then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
-             maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this')|])
-         in pure $ [HS.Qualifier $ maybeWrapThis [hs| I'.pure $texp |] ]
-    else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
-             maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
-         in pure $ [HS.Qualifier $ [hs| I'.liftIO $(maybeWrapThis texp) |] ]
+  pure $ [HS.Generator noLoc HS.PWildCard $ -- throw away the result
+          if null locals && not hasForeigns
+          then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+                   maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this')|])
+               in maybeWrapThis [hs| I'.pure $texp |]
+          else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+                   maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
+               in [hs| I'.liftIO $(maybeWrapThis texp) |] ]
 
 
 
@@ -938,42 +955,43 @@ tStm (ABS.AnnStm _ (ABS.SWhile pexp stmBody)) = do
   let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
       maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
   let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams  -- only treat it as StmExp
-  [HS.Qualifier tbody] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmBody])
+  [HS.Qualifier tbody] <- tStm $ case stmBody of
+                                  ABS.AnnStm _ (ABS.SBlock _) -> stmBody
+                                  singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm]) -- if single statement, wrap it in a new DO-scope
   pure $ [HS.Qualifier [hs| while $(maybeWrapThis texp) $tbody |] ]              
 
 tStm (ABS.AnnStm _ (ABS.SIf pexp stmThen)) = do
   scopeLevels <- get
   (locals, fields,hasForeigns) <- depends pexp
+  [HS.Qualifier tthen] <- tStm $ case stmThen of
+                                  ABS.AnnStm _ (ABS.SBlock _) -> stmThen
+                                  singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm]) -- if single statement, wrap it in a new DO-scope
   let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
       maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this') |])
-  if null locals && not hasForeigns
-    then do
-      let tpred = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
-      [HS.Qualifier tthen] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmThen])
-      pure [HS.Qualifier $ maybeWrapThis [hs| when $tpred $tthen |]]
-    else do
-      let tpred = runReader (let ?vars = localVars in tStmExp pexp) formalParams
-      [HS.Qualifier tthen] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmThen])
-      pure [ HS.Generator noLoc (HS.PVar $ HS.Ident "when'") (maybeWrapThis [hs| I'.liftIO $tpred |])
-           , HS.Qualifier [hs| I'.when when' $tthen |]]
+  pure $ if null locals && not hasForeigns
+         then let tpred = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+              in [HS.Qualifier $ maybeWrapThis [hs| I'.when $tpred $tthen |]]
+         else let tpred = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+              in [ HS.Generator noLoc (HS.PVar $ HS.Ident "when'") (maybeWrapThis [hs| I'.liftIO $tpred |])
+                 , HS.Qualifier [hs| I'.when when' $tthen |]]
 
 tStm (ABS.AnnStm _ (ABS.SIfElse pexp stmThen stmElse)) = do
   scopeLevels <- get
   (locals, fields,hasForeigns) <- depends pexp
+  [HS.Qualifier tthen] <- tStm $ case stmThen of
+                                  ABS.AnnStm _ (ABS.SBlock _) -> stmThen
+                                  singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm]) -- if single statement, wrap it in a new DO-scope
+  [HS.Qualifier telse] <- tStm $ case stmElse of
+                                  ABS.AnnStm _ (ABS.SBlock _) -> stmElse
+                                  singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm]) -- if single statement, wrap it in a new DO-scope
   let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
       maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this') |])
-  if null locals && not hasForeigns
-    then do
-      let tpred = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
-      [HS.Qualifier tthen] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmThen])
-      [HS.Qualifier telse] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmElse])
-      pure [HS.Qualifier $ maybeWrapThis [hs| if $tpred then $tthen else $telse |]]
-    else do
-      let tpred = runReader (let ?vars = localVars in tStmExp pexp) formalParams
-      [HS.Qualifier tthen] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmThen])
-      [HS.Qualifier telse] <- tStm $ ABS.AnnStm [] (ABS.SBlock [stmElse])
-      pure [ HS.Generator noLoc (HS.PVar $ HS.Ident "if'") (maybeWrapThis [hs| I'.liftIO $tpred |])
-           , HS.Qualifier [hs| if if' then $tthen else $telse |]]
+  pure $ if null locals && not hasForeigns
+         then let tpred = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+              in [HS.Qualifier $ maybeWrapThis [hs| if $tpred then $tthen else $telse |]]
+         else let tpred = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+              in [ HS.Generator noLoc (HS.PVar $ HS.Ident "if'") (maybeWrapThis [hs| I'.liftIO $tpred |])
+                 , HS.Qualifier [hs| if if' then $tthen else $telse |]]
 
 -- OTHER STATEMENTS
 --------------------------------
@@ -982,9 +1000,17 @@ tStm (ABS.AnnStm _ (ABS.SSkip)) = pure [] -- ignore skip
 
 tStm (ABS.AnnStm _ (ABS.SBlock astms)) = do
   modify' (M.empty:)            -- add scope-level
-  tstms <- mapM tStm astms
+
+  tstms <- concat <$> mapM tStm astms
+
   modify' tail                  -- remove scope-level
-  pure [HS.Qualifier $ HS.Do $ concat tstms]
+
+  pure $ if null tstms
+         then []                -- do not generate anything 
+         else [HS.Qualifier $ HS.Do $ case last tstms of -- adds another DO
+                       HS.Generator _ _ _ ->  tstms ++ [HS.Qualifier $ [hs| I'.pure () |]]
+                       _ -> tstms]
+
 
 tStm (ABS.AnnStm _ (ABS.SPrint pexp)) = do
   (locals, fields,hasForeigns) <- depends pexp

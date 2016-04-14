@@ -128,12 +128,11 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                     ABS.NoBlock -> if "run" `M.member` aloneMethods
                                   then runCall
                                   else [hs| return () |]
-                    ABS.JustBlock _ block@(ABS.Bloc mbody) -> if "run" `M.member` aloneMethods
-                                                             then if null mbody
-                                                                  then runCall
-                                                                  else let HS.Do hstmts = tMethod block [] fields clsName (M.keys aloneMethods)
-                                                                       in HS.Do $ hstmts ++ [HS.Qualifier runCall]  -- append run statement
-                                                             else tMethod block [] fields clsName (M.keys aloneMethods)
+                    ABS.JustBlock _ block -> if "run" `M.member` aloneMethods
+                                            then case tMethod block [] fields clsName (M.keys aloneMethods) of
+                                                   HS.Do stms -> HS.Do $ stms ++ [HS.Qualifier runCall]  -- append run statement
+                                                   _ -> runCall -- runcall the only rhs
+                                            else tMethod block [] fields clsName (M.keys aloneMethods)
                ) Nothing] ]
     
 
