@@ -127,11 +127,13 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                     ABS.NoBlock -> if "run" `M.member` aloneMethods
                                   then [hs| (this <!!> run) :: I'.IO () |]
                                   else [hs| (return ()) :: I'.IO () |]
-                    ABS.JustBlock _ block -> if "run" `M.member` aloneMethods
-                                            then let HS.Do hstmts = tMethod block [] fields clsName
-                                                     runStmt = HS.Qualifier [hs| this <!!> run|]
-                                                 in [hs| $(HS.Do (hstmts ++ [runStmt])) :: I'.IO () |]  -- append run statement
-                                            else [hs| ($(tMethod block [] fields clsName)) :: I'.IO () |]
+                    ABS.JustBlock _ block@(ABS.Bloc mbody) -> if "run" `M.member` aloneMethods
+                                                             then if null mbody
+                                                                  then [hs| (this <!!> run) :: I'.IO () |]
+                                                                  else let HS.Do hstmts = tMethod block [] fields clsName
+                                                                           runStmt = HS.Qualifier [hs| this <!!> run |]
+                                                                       in [hs| $(HS.Do (hstmts ++ [runStmt])) :: I'.IO () |]  -- append run statement
+                                                             else [hs| ($(tMethod block [] fields clsName)) :: I'.IO () |]
                ) (Just aloneWhereClause)] ]
     
 

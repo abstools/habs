@@ -25,7 +25,7 @@ import Control.Exception (assert)
 #define todo assert False
 
 tMethod :: (?st :: SymbolTable) => ABS.Block -> [ABS.Param] -> M.Map ABS.LIdent ABS.Type -> String -> HS.Exp
-tMethod (ABS.Bloc mbody) mparams fields cname | null mbody = [hs| return ()|] -- necessary, otherwise empty-do error
+tMethod (ABS.Bloc mbody) mparams fields cname | null mbody = [hs| return () |] -- necessary, otherwise empty-do error
                                               | otherwise = evalState (let ?fields = fields  -- fixed fields passed as an implicit param
                                                                            ?cname = cname    -- className needed for field pattern-matching
                                                                        in HS.Do . concat <$> mapM tStm mbody)
