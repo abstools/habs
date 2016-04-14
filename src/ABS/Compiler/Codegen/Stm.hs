@@ -24,11 +24,12 @@ import Data.List (nub, find)
 import Control.Exception (assert)
 #define todo assert False
 
-tMethod :: (?st :: SymbolTable) => ABS.Block -> [ABS.Param] -> M.Map ABS.LIdent ABS.Type -> String -> HS.Exp
-tMethod (ABS.Bloc mbody) mparams fields cname | null mbody = [hs| return () |] -- necessary, otherwise empty-do error
-                                              | otherwise = evalState (let ?fields = fields  -- fixed fields passed as an implicit param
-                                                                           ?cname = cname    -- className needed for field pattern-matching
-                                                                       in HS.Do . concat <$> mapM tStm mbody)
+tMethod :: (?st :: SymbolTable) => ABS.Block -> [ABS.Param] -> M.Map ABS.LIdent ABS.Type -> String -> [String] -> HS.Exp
+tMethod (ABS.Bloc mbody) mparams fields cname cAloneMethods | null mbody = [hs| return () |] -- necessary, otherwise empty-do error
+                                                            | otherwise = evalState (let ?fields = fields  -- fixed fields passed as an implicit param
+                                                                                         ?cname = cname    -- className needed for field pattern-matching
+                                                                                         ?cAloneMethods = cAloneMethods
+                                                                                     in HS.Do . concat <$> mapM tStm mbody)
                                                             [M.empty, -- new scope
                                                              M.fromList (map (\ (ABS.Par t i) -> (i,t)) mparams)] -- first scope level is the formal params
 
@@ -164,14 +165,18 @@ tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.LIdent (_,mname
          if null (concat locals) && not (or hasForeigns)
          then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                       (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                                                      (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                                      (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                       then mname ++ "''" ++ ?cname -- alone-method
+                                                                                       else mname)
                                                       args) formalParams
                   maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this')|])
                   ioAction = [hs| (this <..> $mapplied)|]
               in [hs| (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< $(maybeWrapThis ioAction) |]
          else let mapplied = runReader (let ?vars = localVars in foldlM
                                                  (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
-                                                 [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
+                                                 ((\ e-> [hs|I'.pure $e|]) (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                                           then mname ++ "''" ++ ?cname -- alone-method
+                                                                                                           else mname))
                                                  args) formalParams
                   maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
               in [hs| (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< ((this <..>) =<< I'.liftIO $(maybeWrapThis mapplied)) |] ]
@@ -246,13 +251,17 @@ tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.ThisAsyncMethCall (ABS.LIdent (_,mnam
          if null (concat locals) && not (or hasForeigns)
          then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                                               (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                               (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                then mname ++ "''" ++ ?cname -- alone-method
+                                                                                else mname)
                                                args) formalParams
                   ioAction = [hs| (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (this <!> $mapplied)) |]
               in [hs| I'.liftIO $(maybeWrapThis ioAction)  |]
          else let mapplied = runReader (let ?vars = localVars in foldlM
                                                                       (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
-                                                                      [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
+                                                                      ((\ e-> [hs|I'.pure $e|]) (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                                           then mname ++ "''" ++ ?cname -- alone-method
+                                                                                                           else mname))
                                                                       args) formalParams
               in [hs| I'.liftIO (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< ((this <!>) =<< $(maybeWrapThis mapplied))) |] ]
 
@@ -409,14 +418,18 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.ThisSyncMe
          if null (concat locals) && not (or hasForeigns)
          then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                       (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                                                      (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                                      (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                       then mname ++ "''" ++ ?cname -- alone-method
+                                                                                       else mname)
                                                       args) formalParams
                   maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this')|])
                   ioAction = [hs| (this <..> $mapplied) |]
               in [hs| (I'.liftIO . I'.newIORef) =<< $(maybeWrapThis ioAction) |]
          else let mapplied = runReader (let ?vars = localVars in foldlM
                                                  (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
-                                                 [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
+                                                 ((\ e-> [hs|I'.pure $e|]) (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                                           then mname ++ "''" ++ ?cname -- alone-method
+                                                                                                           else mname))
                                                  args) formalParams
                   maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
               in [hs| (I'.liftIO . I'.newIORef) =<< ((this <..>) =<< I'.liftIO $(maybeWrapThis mapplied)) |] ]
@@ -494,13 +507,17 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.ThisAsyncM
          if null (concat locals) && not (or hasForeigns)
          then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                                               (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                               (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                then mname ++ "''" ++ ?cname -- alone-method
+                                                                                else mname)
                                                args) formalParams
                   ioAction = [hs| (I'.newIORef =<< (this <!> $mapplied)) |]
               in [hs| I'.liftIO $(maybeWrapThis ioAction) |]
          else let mapplied = runReader (let ?vars = localVars in foldlM
                                                                       (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
-                                                                      [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
+                                                                      ((\ e-> [hs|I'.pure $e|]) (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                                           then mname ++ "''" ++ ?cname -- alone-method
+                                                                                                           else mname))
                                                                       args) formalParams
               in [hs| I'.liftIO (I'.newIORef =<< ((this <!>) =<< $(maybeWrapThis mapplied))) |] ]
 
@@ -679,14 +696,18 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.LIdent (_,field)) (ABS.ExpE (ABS.ThisSync
          if null (concat locals) && not (or hasForeigns)
          then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                       (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                                                      (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                                      (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                       then mname ++ "''" ++ ?cname -- alone-method
+                                                                                       else mname)
                                                       args) formalParams
                   recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
               in [hs| (I'.liftIO . I'.writeIORef this') =<< 
                       ((\ this'' -> (\ v' -> $recordUpdate) <$> (this <..> $mapplied)) =<< I'.liftIO (I'.readIORef this'))  |]
          else let mapplied = runReader (let ?vars = localVars in foldlM
                                                  (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
-                                                 [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
+                                                 ((\ e-> [hs|I'.pure $e|]) (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                                           then mname ++ "''" ++ ?cname -- alone-method
+                                                                                                           else mname))
                                                  args) formalParams
                   recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
               in [hs| (I'.liftIO . I'.writeIORef this') =<< 
@@ -778,13 +799,17 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.LIdent (_,field)) (ABS.ExpE (ABS.ThisAsyn
          if null (concat locals) && not (or hasForeigns)
          then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                                               (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                               (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                then mname ++ "''" ++ ?cname -- alone-method
+                                                                                else mname)
                                                args) formalParams
                   recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
               in [hs| I'.liftIO (I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $recordUpdate) <$> (this <!> $mapplied)) =<< I'.readIORef this')) |]
          else let mapplied = runReader (let ?vars = localVars in foldlM
                                                                       (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
-                                                                      [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
+                                                                      ((\ e-> [hs|I'.pure $e|]) (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                                           then mname ++ "''" ++ ?cname -- alone-method
+                                                                                                           else mname))
                                                                       args) formalParams
                   recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
               in [hs| I'.liftIO (I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $recordUpdate) <$> ((this <!>) =<< $mapplied)) =<< I'.readIORef this')) |]]
@@ -1006,7 +1031,7 @@ tStm (ABS.AnnStm _ (ABS.STryCatchFinally try_stm cbranches mfinally)) = todo und
 -- (EFFECTFUL) EXPRESSIONS in statement world
 ---------------------------------------------
 
-tEffExp :: ( ?st::SymbolTable, ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 
+tEffExp :: ( ?st::SymbolTable, ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String, ?cAloneMethods :: [String]) => 
           ABS.EffExp -> Bool -> StmScope HS.Exp
 tEffExp (ABS.New qcname args) _ = do
       scopeLevels <- get
@@ -1115,13 +1140,17 @@ tEffExp (ABS.ThisSyncMethCall (ABS.LIdent (_,mname)) args) _ = do
   if null (concat locals) && not (or hasForeigns)
     then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                                               (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                               (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                then mname ++ "''" ++ ?cname -- alone-method
+                                                                                else mname)
                                                args) formalParams
              maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this')|])
          in pure $ maybeWrapThis [hs| this <..> $mapplied |]
     else let mapplied = runReader (let ?vars = localVars in foldlM
                                               (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
-                                              [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
+                                              ((\ e-> [hs|I'.pure $e|]) (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                                           then mname ++ "''" ++ ?cname -- alone-method
+                                                                                                           else mname))
                                               args) formalParams
              maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
          in pure [hs| (this <..>) =<< I'.liftIO $(maybeWrapThis mapplied) |]
@@ -1198,7 +1227,9 @@ tEffExp (ABS.ThisAsyncMethCall (ABS.LIdent (_,mname)) args) isAlone = do
   if null (concat locals) && not (or hasForeigns)
     then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                                               (HS.Var $ HS.UnQual $ HS.Ident mname)
+                                               (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                then mname ++ "''" ++ ?cname -- alone-method
+                                                                                else mname)
                                                args) formalParams
              ioAction = if isAlone 
                         then [hs| (this <!!> $mapplied) |] -- optimized, fire&forget
@@ -1206,7 +1237,9 @@ tEffExp (ABS.ThisAsyncMethCall (ABS.LIdent (_,mname)) args) isAlone = do
          in pure [hs| I'.liftIO $(maybeWrapThis ioAction) |]
     else let mapplied = runReader (let ?vars = localVars in foldlM
                                             (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
-                                            [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname) |]
+                                            ((\ e-> [hs|I'.pure $e|]) (HS.Var $ HS.UnQual $ HS.Ident $ if mname `elem` ?cAloneMethods
+                                                                                                           then mname ++ "''" ++ ?cname -- alone-method
+                                                                                                           else mname))
                                             args) formalParams
          in pure $ if isAlone 
                    then [hs| (I'.liftIO . this <!!>) =<< $(maybeWrapThis mapplied) |] -- optimized, fire&forget

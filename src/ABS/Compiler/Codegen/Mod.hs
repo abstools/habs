@@ -203,6 +203,6 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                                                       
       tMain :: (?st::SymbolTable) => ABS.MaybeBlock -> [HS.Decl]
       tMain ABS.NoBlock = []
-      tMain (ABS.JustBlock _ block) = [[dec| main = main_is' (\ this -> $(tMethod block [] M.empty "")) |]] -- no params, no fields, empty class-name
+      tMain (ABS.JustBlock _ block) = [[dec| main = main_is' (\ this -> $(tMethod block [] M.empty "" [])) |]] -- no params, no fields, empty class-name, no alone-methods
 
 

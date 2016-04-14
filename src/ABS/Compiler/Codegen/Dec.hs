@@ -123,18 +123,18 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                [[pat| this@(Obj' this' _) |]] -- this, the only param
                Nothing 
                (HS.UnGuardedRhs $
-                  case mInit of
+                  let runCall = [hs| this <!!> $(HS.Var $ HS.UnQual $ HS.Ident $ "run''" ++ clsName) |]
+                  in case mInit of
                     ABS.NoBlock -> if "run" `M.member` aloneMethods
-                                  then [hs| (this <!!> run) :: I'.IO () |]
-                                  else [hs| (return ()) :: I'.IO () |]
+                                  then runCall
+                                  else [hs| return () |]
                     ABS.JustBlock _ block@(ABS.Bloc mbody) -> if "run" `M.member` aloneMethods
                                                              then if null mbody
-                                                                  then [hs| (this <!!> run) :: I'.IO () |]
-                                                                  else let HS.Do hstmts = tMethod block [] fields clsName
-                                                                           runStmt = HS.Qualifier [hs| this <!!> run |]
-                                                                       in [hs| $(HS.Do (hstmts ++ [runStmt])) :: I'.IO () |]  -- append run statement
-                                                             else [hs| ($(tMethod block [] fields clsName)) :: I'.IO () |]
-               ) (Just aloneWhereClause)] ]
+                                                                  then runCall
+                                                                  else let HS.Do hstmts = tMethod block [] fields clsName (M.keys aloneMethods)
+                                                                       in HS.Do $ hstmts ++ [HS.Qualifier runCall]  -- append run statement
+                                                             else tMethod block [] fields clsName (M.keys aloneMethods)
+               ) Nothing] ]
     
 
   ++  -- The direct&indirect instances for interfaces
@@ -154,7 +154,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                                        -- method params
                                                        (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                                                        Nothing 
-                                                       (HS.UnGuardedRhs $ tMethod block mparams fields clsName) (Just aloneWhereClause)])
+                                                       (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods)) Nothing])
                 ) directMethods)
     -- the indirect instances
     : M.foldlWithKey (\ acc (SN n _) indirectMethods ->
@@ -166,7 +166,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                                                              -- method params
                                                                              (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                                                                              Nothing 
-                                                                             (HS.UnGuardedRhs $ tMethod block mparams fields clsName) (Just aloneWhereClause)])
+                                                                             (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods)) Nothing])
                                       ) indirectMethods) : acc
                      ) [] extends
             ) impls
@@ -184,7 +184,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                          -- method params
                          (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                          Nothing 
-                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName) (Just aloneWhereClause)]] )
+                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods)) Nothing]] )
           (M.assocs aloneMethods)
 
   where
@@ -211,11 +211,6 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
           toImplementMethods :: [String]
           toImplementMethods = concatMap (\ (SV (Interface dmethods extends) _) -> concat $ dmethods : M.elems extends) $
                          M.elems $ M.filterWithKey (\ (SN i _) _ -> i `elem` map (snd . splitQType) impls) ?st
-
-    aloneWhereClause :: HS.Binds
-    aloneWhereClause = HS.BDecls $ map (\ aloneMethodLocal ->
-                                            let aloneMethodTop = HS.Var $ HS.UnQual $ HS.Ident $ aloneMethodLocal ++ "''" ++ clsName
-                                            in [dec| __aloneMethodLocal__ = $aloneMethodTop |]) $ M.keys aloneMethods
 
 -- Type synonyms
 tDecl (ABS.TypeDecl (ABS.UIdent (_,tid)) typ) = [ [dec| type U_tid_U = $(tType typ) |] ]
@@ -309,8 +304,8 @@ tDecl (ABS.ExtendsDecl (ABS.UIdent (_,tname)) extends ms) = HS.ClassDecl noLoc
     tMethSig :: String -> ABS.AnnotMethSignat -> HS.ClassDecl
     tMethSig interName (ABS.AnnMethSig _ (ABS.MethSig retTyp (ABS.LIdent (mpos,mname)) params)) = 
         if mname == "run" && ((case retTyp of
-                              ABS.TSimple (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_, "Unit"))]) -> True
-                              _ -> False) || not (null params))
+                              ABS.TSimple (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_, "Unit"))]) -> False
+                              _ -> True) || not (null params))
         then errorPos mpos "run should have zero parameters and return type Unit"
         else HS.ClsDecl $ HS.TypeSig noLoc [HS.Ident mname] $
                foldr  -- function application is right-associative
