@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, QuasiQuotes #-}
+{-# LANGUAGE CPP, ImplicitParams, QuasiQuotes #-}
 -- | abs-pure-expressions in the statement world (which allows mutable local variables, fields, etc)
 -- 
 -- the resulting haskell expressions have type IO, which means that eventually later have to be lifted to ABS monad
@@ -19,6 +19,10 @@ import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
 import Data.List (find)
+
+#if __GLASGOW_HASKELL__ < 710
+import Control.Applicative
+#endif
 
 -- | Translating a pure expression augmented to work with mutable local variables & fields of the statement world
 tStmExp :: ( ?st::SymbolTable, ?vars::M.Map ABS.LIdent ABS.Type, ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 

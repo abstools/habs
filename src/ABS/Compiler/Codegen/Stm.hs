@@ -17,11 +17,16 @@ import Language.Haskell.Exts.QQ (hs)
 import Control.Monad.Trans.State (evalState, get, put, modify')
 import Control.Monad.Trans.Reader (runReader, ask, local)
 import qualified Data.Map as M
-import Control.Applicative ((<|>))
+
 import Data.Foldable (foldlM)
 import Data.List (nub, find)
 
 import Control.Exception (assert)
+
+#if __GLASGOW_HASKELL__ < 710
+import Control.Applicative
+#endif
+
 #define todo assert False
 
 tMethod :: (?st :: SymbolTable) => ABS.Block -> [ABS.Param] -> M.Map ABS.LIdent ABS.Type -> String -> [String] -> HS.Exp

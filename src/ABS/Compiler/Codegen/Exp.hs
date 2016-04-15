@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, QuasiQuotes #-}
+{-# LANGUAGE CPP, ImplicitParams, QuasiQuotes #-}
 module ABS.Compiler.Codegen.Exp
     ( tFunBody
     , tPureExp
@@ -17,6 +17,10 @@ import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
 import Data.List (find)
+
+#if __GLASGOW_HASKELL__ < 710
+import Control.Applicative
+#endif
 
 -- | Translating the body of a pure function
 tFunBody :: ( ?st::SymbolTable, ?tyvars::[ABS.UIdent], ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 
