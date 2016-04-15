@@ -49,6 +49,7 @@ executable habs
   other-modules:
     ABS.Compiler.Firstpass.Base,
     ABS.Compiler.Firstpass.SymbolTable,
+    ABS.Compiler.Codegen.Base,
     ABS.Compiler.Codegen.Mod,
     ABS.Compiler.Codegen.Dec,
     ABS.Compiler.Codegen.Stm,
