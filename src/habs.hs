@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Main where
 
 import qualified ABS.AST as ABS (Program (Prog))
@@ -13,6 +14,10 @@ import Control.Monad (when)
 import System.FilePath ((</>))
 import System.Directory (createDirectoryIfMissing)
 import System.IO (hPrint, stderr)
+
+#if __GLASGOW_HASKELL__ < 710
+import Control.Applicative
+#endif
 
 -- | The habs translator executable
 main :: IO ()
