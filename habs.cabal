@@ -36,7 +36,7 @@ executable habs
     habs-parser,
     -- for outputting a Haskell AST
     haskell-src-exts >= 1.17.0,
-    haskell-src-exts-qq == 0.7.0.1,
+    haskell-src-exts-qq == 0.7,
     -- for intermediate datastructures (e.g. symboltable)
     containers,
     -- for a Reader-monad to implement local scope
@@ -69,11 +69,24 @@ test-suite golden
   main-is: golden.hs
   build-depends:
     base >= 4.7 && < 5,
-    habs-runtime,
-    habs-stdlib,
     tasty,
+    tasty-hunit,
     tasty-program,
     tasty-golden,
     tasty-expected-failure,
-    tasty-html
+    tasty-html,
+    habs-runtime,
+    habs-stdlib,
+    habs-parser,
+    -- for outputting a Haskell AST
+    haskell-src-exts >= 1.17.0,
+    haskell-src-exts-qq == 0.7,
+    -- for intermediate datastructures (e.g. symboltable)
+    containers,
+    -- for a Reader-monad to implement local scope
+    -- for a Writer-monad to have compiler messages output
+    transformers,
+    -- for filepath manipulation when spitting .hs files
+    filepath,
+    directory
   hs-source-dirs: tests, src

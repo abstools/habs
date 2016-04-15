@@ -212,7 +212,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                          M.elems $ M.filterWithKey (\ (SN i _) _ -> i `elem` map (snd . splitQType) impls) ?st
 
 -- Type synonyms
-tDecl (ABS.TypeDecl (ABS.UIdent (_,tid)) typ) = [ [dec| type U_tid_U = $(tType typ) |] ]
+tDecl (ABS.TypeDecl (ABS.UIdent (_,tid)) typ) = [HS.TypeDecl noLoc (HS.Ident tid) [] (tType typ)]
 
 -- Type synonyms with variables
 tDecl (ABS.TypeParDecl (ABS.UIdent (_,tid)) tyvars typ) = [HS.TypeDecl noLoc (HS.Ident tid) 

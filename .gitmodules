@@ -10,6 +10,3 @@
 [submodule "habs-samples"]
 	path = habs-samples
 	url = https://github.com/abstools/habs-samples
-[submodule "haskell-src-exts-qq"]
-	path = haskell-src-exts-qq
-	url = https://github.com/bezirg/haskell-src-exts-qq
