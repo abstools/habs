@@ -14,7 +14,7 @@ import qualified Language.Haskell.Exts.Syntax as HS
 import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 
-import Control.Monad.Trans.State (evalState, get, put, modify')
+import Control.Monad.Trans.State.Strict (evalState, get, put, modify')
 import Control.Monad.Trans.Reader (runReader, ask, local)
 import qualified Data.Map as M
 
