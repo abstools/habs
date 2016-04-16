@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ImplicitParams, QuasiQuotes #-}
+{-# LANGUAGE CPP, ImplicitParams, QuasiQuotes, LambdaCase #-}
 module ABS.Compiler.Codegen.Stm
     ( tMethod
     ) where
@@ -288,6 +288,7 @@ tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.Get pexp)) = do
          else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
               in [hs| I'.liftIO (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (get =<< $(maybeWrapThis texp))) |] ]
 
+tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.ProTry pexp)) = pure []
 
 ------------- DECLARATION+LOCAL VARIABLE ASSIGNMENT
 
@@ -950,6 +951,7 @@ tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
                                          (nub locals)
                         in [hs| awaitBool' this =<< I'.liftIO ($expWrapped) |]]
 
+tStm (ABS.AnnStm _ (ABS.SGive pexp1 pexp2)) = pure []
 
 -- CONTROL FLOW STATEMENTS
 --------------------------
@@ -968,9 +970,11 @@ tStm (ABS.AnnStm _ (ABS.SWhile pexp stmBody)) = do
 tStm (ABS.AnnStm _ (ABS.SIf pexp stmThen)) = do
   scopeLevels <- get
   (locals, fields,hasForeigns) <- depends pexp
-  [HS.Qualifier tthen] <- tStm $ case stmThen of
-                                  ABS.AnnStm _ (ABS.SBlock _) -> stmThen
-                                  singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm]) -- if single statement, wrap it in a new DO-scope
+  tthen <- (\case 
+           [] -> [hs| I'.pure () |]
+           [HS.Qualifier tthen'] -> tthen') <$> (tStm $ case stmThen of
+                                                        ABS.AnnStm _ (ABS.SBlock _) -> stmThen
+                                                        singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm])) -- if single statement, wrap it in a new DO-scope
   let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
       maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this') |])
   pure $ if null locals && not hasForeigns
@@ -983,12 +987,16 @@ tStm (ABS.AnnStm _ (ABS.SIf pexp stmThen)) = do
 tStm (ABS.AnnStm _ (ABS.SIfElse pexp stmThen stmElse)) = do
   scopeLevels <- get
   (locals, fields,hasForeigns) <- depends pexp
-  [HS.Qualifier tthen] <- tStm $ case stmThen of
-                                  ABS.AnnStm _ (ABS.SBlock _) -> stmThen
-                                  singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm]) -- if single statement, wrap it in a new DO-scope
-  [HS.Qualifier telse] <- tStm $ case stmElse of
-                                  ABS.AnnStm _ (ABS.SBlock _) -> stmElse
-                                  singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm]) -- if single statement, wrap it in a new DO-scope
+  tthen <- (\case 
+           [] -> [hs| I'.pure () |]
+           [HS.Qualifier tthen'] -> tthen') <$> (tStm $ case stmThen of
+                                                        ABS.AnnStm _ (ABS.SBlock _) -> stmThen
+                                                        singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm])) -- if single statement, wrap it in a new DO-scope
+  telse <- (\case 
+           [] -> [hs| I'.pure () |]
+           [HS.Qualifier telse'] -> telse') <$> (tStm $ case stmElse of
+                                                        ABS.AnnStm _ (ABS.SBlock _) -> stmElse
+                                                        singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm])) -- if single statement, wrap it in a new DO-scope
   let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
       maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.liftIO (I'.readIORef this') |])
   pure $ if null locals && not hasForeigns

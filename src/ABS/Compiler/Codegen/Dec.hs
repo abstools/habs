@@ -16,6 +16,7 @@ import Data.Maybe (mapMaybe)
 import qualified Data.Map as M
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
+import Data.List (find)
 
 tDecl :: (?st :: SymbolTable) => ABS.Decl -> [HS.Decl]
 
@@ -86,9 +87,8 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                ABS.TSimple qtyp -> return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
                                                   (let (prefix, ident) = splitQType qtyp
                                                        Just (SV symbolType _) = if null prefix
-                                                                               then M.lookup (SN ident Nothing) ?st
-                                                                               else M.lookup (SN ident (Just (prefix, False))) ?st 
-                                                                                        <|> M.lookup (SN ident (Just (prefix, True))) ?st 
+                                                                               then snd <$> find (\ (SN ident' modul,_) -> ident == ident' && maybe True (not . snd) modul) (M.assocs ?st)
+                                                                               else M.lookup (SN ident (Just (prefix, True))) ?st 
                                                    in case symbolType of
                                                         Interface _ _ -> [hs| $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp) null |]
                                                         Foreign -> [hs| (I'.error "foreign object not initialized") |]
