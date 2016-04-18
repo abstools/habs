@@ -1357,53 +1357,54 @@ depends pexp = runReader (depends' pexp ([],[],False)) . M.unions . init <$> get
                                         Just (_,SV Foreign _) ->  (rlocal, rfields,True)
                                         _ -> (rlocal, rfields,hasForeigns)
     ABS.Let (ABS.Par _ ident) pexpEq pexpIn -> do
-                                    (rlocalEq, rfieldsEq,hasForeignsEq) <- depends' pexpEq (rlocal,rfields,hasForeigns)
+                                    (rlocalEq, rfieldsEq,hasForeignsEq) <- depends' pexpEq ([],[],False)
                                     (rlocalIn, rfieldsIn,hasForeignsIn) <- let fields' = ?fields
                                                             in
                                                               let ?fields = M.delete ident fields' 
-                                                              in local (M.delete ident) (depends' pexpIn (rlocal, rfields,hasForeigns))
-                                    pure (rlocalEq++rlocalIn, rfieldsEq++rfieldsIn,hasForeignsEq||hasForeignsIn)
+                                                              in local (M.delete ident) (depends' pexpIn ([],[],False))
+                                    pure (rlocal++rlocalEq++rlocalIn, rfields++rfieldsEq++rfieldsIn,hasForeigns||hasForeignsEq||hasForeignsIn)
     -- ABS.ESinglConstr qtyp -> pure $ let (prefix, str) = splitQType qtyp
     --                                in case find (\ (SN str' modul,_) -> str == str' && maybe False (not . snd) modul) (M.assocs ?st) of
     --                                     Just (_,SV Foreign _) ->  (rlocal, rfields,True)
     --                                     _ -> (rlocal, rfields,hasForeigns)
     ABS.Case pexpOf branches -> do
         (rlocalOf, rfieldsOf,hasForeignsOf) <- depends' pexpOf (rlocal,rfields,hasForeigns)      
-        mapM (\ (ABS.CaseBranc pat pexpBranch) ->
+        foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal++rlocalOf, rfields++rfieldsOf,hasForeigns||hasForeignsOf)
+              <$> mapM (\ (ABS.CaseBranc pat pexpBranch) ->
                   let fields' = ?fields
                       idents = collectPatVars pat
                   in
                     let ?fields = foldl (flip M.delete) fields' idents
-                    in local (\ scope -> foldl (flip M.delete) scope idents) (depends' pexpBranch (rlocal, rfields,hasForeigns))
+                    in local (\ scope -> foldl (flip M.delete) scope idents) (depends' pexpBranch ([],[],False))
                   ) branches
-        pure (rlocalOf, rfieldsOf,hasForeignsOf)
-    ABS.EOr e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.EAnd e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.EEq e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.ENeq e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.ELt e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.ELe e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.EGt e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.EGe e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.EAdd e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.ESub e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.EMul e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.EDiv e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
-    ABS.EMod e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e']
+
+    ABS.EOr e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.EAnd e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.EEq e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.ENeq e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.ELt e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.ELe e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.EGt e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.EGe e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.EAdd e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.ESub e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.EMul e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.EDiv e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
+    ABS.EMod e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
     ABS.ELogNeg e -> depends' e (rlocal, rfields, hasForeigns)
     ABS.EIntNeg e -> depends' e (rlocal, rfields, hasForeigns)
-    ABS.EFunCall (ABS.LIdent (_,str)) es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex 
+    ABS.EFunCall (ABS.LIdent (_,str)) es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) 
               (case find (\ (SN str' modul,_) -> str == str' && maybe False (not . snd) modul) (M.assocs ?st) of
                  Just (_,SV Foreign _) ->  (rlocal, rfields,True)
-                 _ -> (rlocal, rfields,hasForeigns)) ) es
-    ABS.EQualFunCall _ _ es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) es
-    ABS.ENaryFunCall (ABS.LIdent (_,str)) es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex 
+                 _ -> (rlocal, rfields,hasForeigns)) <$> mapM (\ ex -> depends' ex ([],[],False)) es
+    ABS.EQualFunCall _ _ es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) es
+    ABS.ENaryFunCall (ABS.LIdent (_,str)) es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) 
               (case find (\ (SN str' modul,_) -> str == str' && maybe False (not . snd) modul) (M.assocs ?st) of
                  Just (_,SV Foreign _) ->  (rlocal, rfields,True)
-                 _ -> (rlocal, rfields,hasForeigns)) ) es
-    ABS.ENaryQualFunCall _ _ es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) es
-    ABS.EParamConstr qtyp es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) es
-    ABS.If e e' e'' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) ([],[],False) <$> mapM (\ ex -> depends' ex (rlocal, rfields, hasForeigns)) [e,e',e'']
+                 _ -> (rlocal, rfields,hasForeigns)) <$> mapM (\ ex -> depends' ex ([],[],False)) es
+    ABS.ENaryQualFunCall _ _ es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False) ) es
+    ABS.EParamConstr qtyp es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields,hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) es
+    ABS.If e e' e'' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields,hasForeigns) <$>  mapM (\ ex -> depends' ex ([],[],False)) [e,e',e'']
     _ -> return (rlocal, rfields, hasForeigns)
 
 
