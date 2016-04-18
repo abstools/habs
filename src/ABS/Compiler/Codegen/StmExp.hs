@@ -57,10 +57,14 @@ tStmExp (ABS.Case ofE branches) = do
                ]
 
 tStmExp (ABS.EFunCall (ABS.LIdent (_,cid)) args) =  case find (\ (SN ident' modul,_) -> cid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
-                                                      Just (_,SV Foreign _) -> HS.Paren <$> foldlM
-                                                                              (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| ($acc =<< $targ) |])
-                                                                              [hs| $(HS.Var $ HS.UnQual $ HS.Ident cid) |] -- impure
-                                                                              args
+                                                      Just (_,SV Foreign _) -> if null args
+                                                                              then pure [hs| $(HS.Var $ HS.UnQual $ HS.Ident cid) |]
+                                                                              else do 
+                                                                                nested <- foldlM
+                                                                                         (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| ($acc <*> $targ) |])
+                                                                                         [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident cid) |]
+                                                                                         args
+                                                                                pure [hs| (I'.join ($nested)) |]
                                                       _ ->  HS.Paren <$> foldlM
                                                            (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                                            [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident cid) |]
@@ -148,7 +152,7 @@ tStmExp (ABS.EMul l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((*) <
 tStmExp (ABS.EDiv l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((/) <$> $tl <*> $tr) |]
 tStmExp (ABS.EMod l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((%) <$> $tl <*> $tr) |]
 tStmExp (ABS.ELogNeg e) = do te <- tStmExp e; pure [hs| ((not) <$> $te) |]
-tStmExp (ABS.EIntNeg e) = do te <- tStmExp e; pure [hs| ((-) <$> $te) |]
+tStmExp (ABS.EIntNeg e) = do te <- tStmExp e; pure [hs| (I'.negate <$> $te) |]
 
 tStmExp (ABS.ESinglConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Unit"))]))     = pure [hs| I'.pure () |]
 tStmExp (ABS.ESinglConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Nil"))]))      = pure [hs| I'.pure [] |]

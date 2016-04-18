@@ -53,49 +53,49 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Function" 
                         , HS.importQualified = False
                         , HS.importAs = Nothing
-                        , HS.importSpecs = Just (False,[HS.IVar (HS.Symbol ".")])
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Symbol "."])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Applicative" 
                         , HS.importQualified = False
                         , HS.importAs = Nothing
-                        , HS.importSpecs = Just (False,[HS.IVar (HS.Symbol "<$>"), HS.IVar (HS.Symbol "<*>")])
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Symbol "<$>", HS.IVar $ HS.Symbol "<*>"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Applicative" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
-                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "pure")])
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "pure"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.IORef" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
-                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "newIORef"), HS.IVar (HS.Ident "readIORef"), HS.IVar (HS.Ident "writeIORef")])
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "newIORef", HS.IVar $ HS.Ident "readIORef", HS.IVar $ HS.Ident "writeIORef"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad.IO.Class" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
-                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "liftIO")])
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "liftIO"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
-                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "when"), HS.IVar (HS.Ident "sequence")])
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "when", HS.IVar $ HS.Ident "sequence", HS.IVar $ HS.Ident "join"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Prelude" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
-                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "IO", HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "putStrLn", HS.IVar $ HS.Ident "error"])
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "IO", HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "putStrLn", HS.IVar $ HS.Ident "error", HS.IVar $ HS.Ident "negate"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Unsafe.Coerce" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
-                        , HS.importSpecs = Just (False,[HS.IVar (HS.Ident "unsafeCoerce")])
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "unsafeCoerce"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         ]

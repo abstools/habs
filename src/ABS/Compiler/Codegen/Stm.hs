@@ -288,7 +288,18 @@ tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.Get pexp)) = do
          else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
               in [hs| I'.liftIO (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (get =<< $(maybeWrapThis texp))) |] ]
 
-tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.ProTry pexp)) = pure []
+tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.ProTry pexp)) = do
+  scopeLevels <- get
+  (locals,fields,hasForeigns) <- depends pexp
+  let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+      maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
+  pure [HS.Qualifier $
+         if null locals && not hasForeigns
+         then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+                  ioAction = [hs| I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< try $texp |]
+              in [hs| I'.liftIO $(maybeWrapThis ioAction) |]
+         else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+              in [hs| I'.liftIO (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (try =<< $(maybeWrapThis texp))) |] ]
 
 ------------- DECLARATION+LOCAL VARIABLE ASSIGNMENT
 
@@ -951,7 +962,22 @@ tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
                                          (nub locals)
                         in [hs| awaitBool' this =<< I'.liftIO ($expWrapped) |]]
 
-tStm (ABS.AnnStm _ (ABS.SGive pexp1 pexp2)) = pure []
+tStm (ABS.AnnStm _ (ABS.SGive pexp1 pexp2)) = do
+  scopeLevels <- get
+  (locals,fields,hasForeigns) <- depends (ABS.EAnd pexp1 pexp2)
+  let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+      maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
+  pure [HS.Qualifier $
+         if null locals && not hasForeigns
+         then let texp1 = runReader (let ?tyvars = [] in tPureExp pexp1) formalParams
+                  texp2 = runReader (let ?tyvars = [] in tPureExp pexp2) formalParams
+                  ioAction = [hs| (resolve $texp1 $texp2) |]
+              in [hs| I'.liftIO $(maybeWrapThis ioAction) |]
+         else let texp1 = runReader (let ?vars = localVars in tStmExp pexp1) formalParams
+                  texp2 = runReader (let ?vars = localVars in tStmExp pexp2) formalParams
+                  ioAction = [hs| ((\ e1' -> resolve r1 =<< $texp2) =<< $texp1) |]
+              in [hs| I'.liftIO $(maybeWrapThis ioAction) |] ]
+
 
 -- CONTROL FLOW STATEMENTS
 --------------------------
