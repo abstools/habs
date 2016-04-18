@@ -19,7 +19,7 @@ import Data.Foldable (foldlM)
 import Data.List (find)
 
 #if __GLASGOW_HASKELL__ < 710
-import Control.Applicative
+import Control.Applicative (pure, (<$>), (<*>))
 #endif
 
 -- | Translating the body of a pure function

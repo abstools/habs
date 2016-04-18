@@ -16,7 +16,7 @@ import System.Directory (createDirectoryIfMissing)
 import System.IO (hPrint, stderr)
 
 #if __GLASGOW_HASKELL__ < 710
-import Control.Applicative
+import Control.Applicative (pure, (<$>), (<*>))
 #endif
 
 -- | The habs translator executable

@@ -198,7 +198,10 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                Class -> [HS.IThingAll $ HS.Ident $ showAnyIdent iden,
                           HS.IVar $ HS.Ident $ headToLower $ showAnyIdent iden ++ "'" -- class smart constructor
                        ]
-               -- function, datatype, type synonym, foreign
+               Foreign -> case iden of
+                           ABS.AnyTyIden _ -> [HS.IThingAll $ HS.Ident $ showAnyIdent iden]
+                           _ -> [HS.IVar $ HS.Ident $ showAnyIdent iden]
+               -- function, datatype, type synonym
                _ -> [HS.IVar $ HS.Ident $ showAnyIdent iden]
                                                       
       tMain :: (?st::SymbolTable) => ABS.MaybeBlock -> [HS.Decl]

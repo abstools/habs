@@ -21,7 +21,7 @@ import Data.Foldable (foldlM)
 import Data.List (find)
 
 #if __GLASGOW_HASKELL__ < 710
-import Control.Applicative
+import Control.Applicative (pure, (<$>), (<*>))
 #endif
 
 -- | Translating a pure expression augmented to work with mutable local variables & fields of the statement world

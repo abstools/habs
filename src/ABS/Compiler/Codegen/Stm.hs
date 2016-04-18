@@ -24,7 +24,7 @@ import Data.List (nub, find)
 import Control.Exception (assert)
 
 #if __GLASGOW_HASKELL__ < 710
-import Control.Applicative
+import Control.Applicative (pure, (<$>), (<*>))
 #endif
 
 #define todo assert False
@@ -934,10 +934,13 @@ tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
                                                   in (fsl++fs++fsr,asl++as++asr)
 
     tGuard (ABS.FutGuard var@(ABS.LIdent (_, fname))) = do
-      inScope <- M.member var . M.unions <$> get
-      if inScope
-        then pure [HS.Qualifier [hs| awaitFuture' this =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident fname)) |]]
-        else tGuard (ABS.FutFieldGuard var) -- try as field-future
+      scopeLevels <- get                                 
+      let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+      if var `M.member` formalParams 
+        then  pure [HS.Qualifier [hs| awaitFuture' this $(HS.Var $ HS.UnQual $ HS.Ident fname) |]]
+        else if var `M.member` localVars
+             then pure [HS.Qualifier [hs| awaitFuture' this =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident fname)) |]]
+             else tGuard (ABS.FutFieldGuard var) -- try as field-future
 
     -- currently, no solution to the cosimo problem
     tGuard (ABS.FutFieldGuard (ABS.LIdent (_, fname))) = do
@@ -975,7 +978,7 @@ tStm (ABS.AnnStm _ (ABS.SGive pexp1 pexp2)) = do
               in [hs| I'.liftIO $(maybeWrapThis ioAction) |]
          else let texp1 = runReader (let ?vars = localVars in tStmExp pexp1) formalParams
                   texp2 = runReader (let ?vars = localVars in tStmExp pexp2) formalParams
-                  ioAction = [hs| ((\ e1' -> resolve r1 =<< $texp2) =<< $texp1) |]
+                  ioAction = [hs| ((\ e1' -> resolve e1' =<< $texp2) =<< $texp1) |]
               in [hs| I'.liftIO $(maybeWrapThis ioAction) |] ]
 
 

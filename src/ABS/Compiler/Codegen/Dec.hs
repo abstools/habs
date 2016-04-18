@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, QuasiQuotes, TemplateHaskell, LambdaCase #-}
+{-# LANGUAGE CPP, ImplicitParams, QuasiQuotes, TemplateHaskell, LambdaCase #-}
 module ABS.Compiler.Codegen.Dec where
 
 import ABS.Compiler.Utils
@@ -17,6 +17,10 @@ import qualified Data.Map as M
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Data.List (find)
+
+#if __GLASGOW_HASKELL__ < 710
+import Control.Applicative (pure, (<$>), (<*>))
+#endif
 
 tDecl :: (?st :: SymbolTable) => ABS.Decl -> [HS.Decl]
 
