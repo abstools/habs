@@ -24,7 +24,7 @@ matrix:
       addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.2,happy-1.19.4], sources: [hvr-ghc]}}
     - env: CABALVER=1.22 GHCVER=7.10.3
       compiler: ": #GHC 7.10.3"
-      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.3,happy-1.19.4], sources: [hvr-ghc]}}
+      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.3,happy-1.19.4,hscolour], sources: [hvr-ghc]}}
 
 before_install:
  - unset CC
@@ -90,7 +90,6 @@ script:
 after_script:
   - if [ "$TRAVIS_BRANCH" == "master" -a "$TRAVIS_PULL_REQUEST" == "false" -a "$GHCVER" == "7.10.3" ]; 
     then
-       cabal install hscolour;
        cabal haddock --executables --hyperlink-source --html-location='http://hackage.haskell.org/packages/archive/$pkg/latest/doc/html'; 
        cp dist/test-results.html dist/doc/html/habs/habs/;
        cd dist/doc/html/habs/habs/;
