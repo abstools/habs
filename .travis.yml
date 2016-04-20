@@ -90,6 +90,7 @@ script:
 after_script:
   - if [ "$TRAVIS_BRANCH" == "master" -a "$TRAVIS_PULL_REQUEST" == "false" -a "$GHCVER" == "7.10.3" ]; 
     then
+       cabal install hscolour;
        cabal haddock --executables --hyperlink-source --html-location='http://hackage.haskell.org/packages/archive/$pkg/latest/doc/html'; 
        cp dist/test-results.html dist/doc/html/habs/habs/;
        cd dist/doc/html/habs/habs/;
