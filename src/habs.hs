@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, LambdaCase #-}
 module Main where
 
 import qualified ABS.AST as ABS (Program (Prog))
@@ -26,7 +26,9 @@ main =
   then error "No ABS files to translate are given as input. Try --help"
   else do
      -- 0. parse all modules to their ASTs
-     modules <- concatMap (\ (_,Ok (ABS.Prog ms)) -> ms) . concat <$> mapM parseFileOrDir (src_files cmdOpt)
+     modules <- concatMap (\case (_,Ok (ABS.Prog ms)) -> ms
+                                 (fileName, Bad msg) -> error $ fileName ++ " failed to parse. " ++ msg) 
+                                 . concat <$> mapM parseFileOrDir (src_files cmdOpt)
      when (dump_ast cmdOpt) $ mapM_ (hPrint stderr) modules
      -- 1.st-pass: build the symboltables
      let symbolTables = globalSTs modules

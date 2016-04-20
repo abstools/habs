@@ -106,7 +106,7 @@ tAss _ t (ABS.LIdent (_,n)) (ABS.ExpE (ABS.NewLocal qcname args)) = do
                                                args) formalParams
               in [hs| I'.liftIO ((I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< (newlocal' this $initFun =<< $(maybeWrapThis smartApplied))) |] ]
 
-tAss a typ i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)) = do
+tAss a typ i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)) =
   case pexp of
    ABS.EVar ident@(ABS.LIdent (_,calleeVar)) -> do
     scopeLevels <- get
@@ -191,7 +191,7 @@ tAss _ _ (ABS.LIdent (_,n)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.LIdent (_,mname
                   maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
               in [hs| (I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< ((this <..>) =<< I'.liftIO $(maybeWrapThis mapplied)) |] ]
 
-tAss a typ i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)) = do
+tAss a typ i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)) =
  case pexp of
   ABS.EVar ident@(ABS.LIdent (_, calleeVar)) -> do
     scopeLevels <- get
@@ -367,7 +367,7 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.NewLocal q
               in [hs| I'.liftIO ((I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp)) =<< (newlocal' this $initFun =<< $(maybeWrapThis smartApplied))) |] ]
 
 
-tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
+tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)))) =
   case pexp of
    ABS.EVar ident@(ABS.LIdent (_, calleeVar)) -> do
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
@@ -456,7 +456,7 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.ThisSyncMe
                   maybeWrapThis = if null (concat fields) then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
               in [hs| (I'.liftIO . I'.newIORef) =<< ((this <..>) =<< I'.liftIO $(maybeWrapThis mapplied)) |] ]
 
-tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
+tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)))) =
  case pexp of
   ABS.EVar ident@(ABS.LIdent (_,calleeVar)) -> do
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
@@ -639,7 +639,7 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss i@(ABS.LIdent (_,field)) (ABS.ExpE (ABS.NewLoc
 
 
 
-tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.LIdent (_,field)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
+tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.LIdent (_,field)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.LIdent (p,mname)) args)))) =
   case pexp of
    ABS.EVar ident@(ABS.LIdent (_,calleeVar)) -> do
     scopeLevels <- get
@@ -735,7 +735,7 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.LIdent (_,field)) (ABS.ExpE (ABS.ThisSync
               in [hs| (I'.liftIO . I'.writeIORef this') =<< 
                       ((\ this'' -> (\ v' -> $recordUpdate) <$> ((this <..>) =<< I'.liftIO ($mapplied))) =<< I'.liftIO (I'.readIORef this')) |]]
 
-tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.LIdent (_,field)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)))) = do
+tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.LIdent (_,field)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.LIdent (p,mname)) args)))) =
  case pexp of
   ABS.EVar ident@(ABS.LIdent (_, calleeVar)) -> do
     scopeLevels <- get
@@ -1038,7 +1038,7 @@ tStm (ABS.AnnStm _ (ABS.SIfElse pexp stmThen stmElse)) = do
 -- OTHER STATEMENTS
 --------------------------------
 
-tStm (ABS.AnnStm _ (ABS.SSkip)) = pure [] -- ignore skip
+tStm (ABS.AnnStm _ ABS.SSkip) = pure [] -- ignore skip
 
 tStm (ABS.AnnStm _ (ABS.SBlock astms)) = do
   modify' (M.empty:)            -- add scope-level
@@ -1310,8 +1310,8 @@ tEffExp (ABS.ThisAsyncMethCall (ABS.LIdent (_,mname)) args) isAlone = do
                                                                                                            else mname))
                                             args) formalParams
          in pure $ if isAlone 
-                   then [hs| (I'.liftIO . this <!!>) =<< $(maybeWrapThis mapplied) |] -- optimized, fire&forget
-                   else [hs| (I'.liftIO . this <!>) =<< $(maybeWrapThis mapplied) |]
+                   then [hs| (I'.liftIO . (this <!!>)) =<< $(maybeWrapThis mapplied) |] -- optimized, fire&forget
+                   else [hs| (I'.liftIO . (this <!>)) =<< $(maybeWrapThis mapplied) |]
 
 tEffExp (ABS.Get pexp) _ = do
   scopeLevels <- get
