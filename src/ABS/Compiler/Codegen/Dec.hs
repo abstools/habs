@@ -86,7 +86,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                    ABS.FieldClassBody t (ABS.LIdent (p,fid)) ->  case t of
                                -- it is an unitialized future (abs allows this)
                                ABS.TGen (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Fut"))])  _ -> 
-                                   return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) [hs| emptyFuture |] : acc
+                                   return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) [hs| nullFuture' |] : acc
                                -- it may be an object (to be set to null) or foreign (to be set to undefined)
                                ABS.TSimple qtyp -> return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
                                                   (let (prefix, ident) = splitQType qtyp
@@ -133,10 +133,10 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                   then runCall
                                   else [hs| return () |]
                     ABS.JustBlock _ block -> if "run" `M.member` aloneMethods
-                                            then case tMethod block [] fields clsName (M.keys aloneMethods) of
+                                            then case tMethod block [] fields clsName (M.keys aloneMethods) True of
                                                    HS.Do stms -> HS.Do $ stms ++ [HS.Qualifier runCall]  -- append run statement
                                                    _ -> runCall -- runcall the only rhs
-                                            else tMethod block [] fields clsName (M.keys aloneMethods)
+                                            else tMethod block [] fields clsName (M.keys aloneMethods) True
                ) Nothing] ]
     
 
@@ -157,7 +157,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                                        -- method params
                                                        (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                                                        Nothing 
-                                                       (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods)) Nothing])
+                                                       (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
                 ) directMethods)
     -- the indirect instances
     : M.foldlWithKey (\ acc (SN n _) indirectMethods ->
@@ -169,7 +169,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                                                              -- method params
                                                                              (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                                                                              Nothing 
-                                                                             (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods)) Nothing])
+                                                                             (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
                                       ) indirectMethods) : acc
                      ) [] extends
             ) impls
@@ -187,7 +187,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                          -- method params
                          (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                          Nothing 
-                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods)) Nothing]] )
+                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing]] )
           (M.assocs aloneMethods)
 
   where

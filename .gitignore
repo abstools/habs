@@ -20,6 +20,8 @@ gen/
 *_flymake.abs
 *_flymake.hs
 TAGS
+tags
+.tags
 
 # OS
 *~

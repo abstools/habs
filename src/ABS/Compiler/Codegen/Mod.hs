@@ -74,10 +74,10 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                         , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "newIORef", HS.IVar $ HS.Ident "readIORef", HS.IVar $ HS.Ident "writeIORef"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
-        , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad.IO.Class" 
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad.Trans.Class" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
-                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "liftIO"])
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "lift"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad" 
@@ -206,6 +206,6 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                                                       
       tMain :: (?st::SymbolTable) => ABS.MaybeBlock -> [HS.Decl]
       tMain ABS.NoBlock = []
-      tMain (ABS.JustBlock _ block) = [[dec| main = main_is' (\ this -> $(tMethod block [] M.empty "" [])) |]] -- no params, no fields, empty class-name, no alone-methods
+      tMain (ABS.JustBlock _ block) = [[dec| main = main_is' (\ this -> $(tMethod block [] M.empty "" [] False)) |]] -- no params, no fields, empty class-name, no alone-methods
 
 
