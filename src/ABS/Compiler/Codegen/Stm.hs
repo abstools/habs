@@ -565,12 +565,13 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.Get pexp))
 
 
 tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.ProTry pexp)))) = do
-  scopeLevels <- get
+  scopeLevels <- addToScope t i
   (locals,fields,hasForeigns) <- depends pexp
   let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
       maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
       maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
-  pure [HS.Qualifier $
+  pure [HS.Generator noLoc
+        (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) $
          if null locals && not hasForeigns
          then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
               in maybeLift $ maybeWrapThis [hs| I'.newIORef =<< pro_try $texp |]
@@ -578,8 +579,11 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE (ABS.ProTry pex
               in maybeLift [hs| I'.newIORef =<< (pro_try =<< $(maybeWrapThis texp)) |] ]
 
 tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.LIdent (_,n)) (ABS.ExpE ABS.ProNew))) = do
+  _ <- addToScope t i
   let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
-  pure [HS.Qualifier $ maybeLift [hs| I'.newIORef =<< pro_new |] ]
+  pure [HS.Generator noLoc
+        (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) $ 
+        maybeLift [hs| I'.newIORef =<< pro_new |] ]
 
 
 --- DISPATCHER: LOCAL-VARIABLE OR FIELD ASSIGMENT
@@ -941,7 +945,7 @@ tStm (ABS.AnnStm _ (ABS.SDec t i@(ABS.LIdent (p,n)))) = do
           (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) $
           case t of
             -- it is an unitialized future (set to newEmptyMVar)
-            ABS.TGen (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Fut"))])  _ -> maybeLift [hs| I'.newIORef =<< nullFuture' |]
+            ABS.TGen (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Fut"))])  _ -> maybeLift [hs| I'.newIORef nullFuture' |]
             -- it may be an object (set to null) or foreign (set to undefined)
             _ -> let
                   qtyp = case t of

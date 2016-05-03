@@ -62,6 +62,12 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
                         , HS.importSpecs = Just (False,[HS.IVar $ HS.Symbol "<$>", HS.IVar $ HS.Symbol "<*>"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad" 
+                        , HS.importQualified = False
+                        , HS.importAs = Nothing
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Symbol "=<<"])
+                        , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                        }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Applicative" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
