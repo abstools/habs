@@ -175,36 +175,23 @@ tPureExp (ABS.EParamConstr qtyp args) = HS.Paren <$>
 tPureExp (ABS.EVar var@(ABS.LIdent (p,pid))) = do
      scope <- ask
      pure $ case M.lookup var scope of
-              Just t -> maybeUpcastInt t $ HS.Var $ HS.UnQual $ HS.Ident pid
+              Just t -> maybeUpcast t $ HS.Var $ HS.UnQual $ HS.Ident pid
               Nothing ->  case M.lookup var ?fields of
                            Just t -> if null ?cname
                                     then errorPos p "cannot access fields inside main block or pure functions"
                                     else let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname -- accessor
-                                         in maybeUpcastInt t [hs| ($fieldFun this'') |] -- accessor
+                                         in maybeUpcast t [hs| ($fieldFun this'') |] -- accessor
                            Nothing -> case find (\ (SN ident' modul,_) -> pid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
                                        Just (_,SV Foreign _) -> HS.Var $ HS.UnQual $ HS.Ident pid
                                        _ ->  HS.Var $ HS.UnQual $ HS.Ident pid -- errorPos p $ pid ++ " not in scope" -- 
 
-                -- HS.Paren $ (if isInterface t
-                --             then HS.App (HS.Var $ identI "up") -- upcasting if it is of a class type
-                --             else id) 
-    where
-      maybeUpcastInt t = case t of
-                           ABS.TSimple (ABS.QTyp ([ABS.QTypeSegmen (ABS.UIdent (_,"Int"))])) -> (\ e -> [hs| (I'.fromIntegral $e) |])
-                           _ -> id
-                
 
 tPureExp (ABS.EThis var@(ABS.LIdent (p, field))) = if null ?cname
                                                    then errorPos p "cannot access fields inside main block or pure code"
                                                    else case M.lookup var ?fields of
-                                                          Just t -> pure $ maybeUpcastInt t [hs| ($fieldFun this'') |]
+                                                          Just t -> let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname
+                                                                   in pure $ maybeUpcast t [hs| ($fieldFun this'') |]
                                                           Nothing -> errorPos p "no such field"
-    where
-      fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname -- accessor
-      maybeUpcastInt t = case t of
-                           ABS.TSimple (ABS.QTyp ([ABS.QTypeSegmen (ABS.UIdent (_,"Int"))])) -> (\ e -> [hs| (I'.fromIntegral $e) |])
-                           _ -> id
-
 
 tPureExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LStr str ->  HS.Lit $ HS.String str
@@ -216,3 +203,15 @@ tPureExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LThisDC -> [hs| thisDC |]
 
 
+-- UPCASTING
+------------
+
+-- | upcasting an expression
+maybeUpcast :: (?st::M.Map SymbolName SymbolValue) => ABS.Type -> HS.Exp -> HS.Exp
+maybeUpcast t = case t of
+  ABS.TSimple (ABS.QTyp ([ABS.QTypeSegmen (ABS.UIdent (_,"Int"))])) -> (\ e -> [hs| (I'.fromIntegral $e) |])
+  ABS.TSimple qtyp -> let (prefix, iident) = splitQType qtyp 
+                     in case find (\ (SN ident' mmodule,_) -> iident == ident' && maybe (null prefix) ((prefix,True) ==) mmodule) (M.assocs ?st) of
+                          Just (_,SV (Interface _ _) _) -> (\ e -> [hs| (up' $e) |]) -- is interface
+                          _ -> id
+  _ -> id
