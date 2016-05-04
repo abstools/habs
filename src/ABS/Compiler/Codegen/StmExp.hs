@@ -195,36 +195,49 @@ tStmExp (ABS.EParamConstr qtyp args) = HS.Paren <$>
 
 tStmExp (ABS.EVar var@(ABS.LIdent (p,pid))) = do
      scope <- ask
-     pure $ if var `M.member` scope
-            then [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident pid) |]
-            else if var `M.member` ?vars
-                 then [hs| I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident pid) |]
-                 else if var `M.member` ?fields
-                      then if null ?cname
-                           then errorPos p "cannot access fields here"
-                           else let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname
-                                in [hs| I'.pure ($fieldFun this'') |] -- accessor
-                 else case find (\ (SN ident' modul,_) -> pid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
-                        Just (_,SV Foreign _) -> HS.Var $ HS.UnQual $ HS.Ident pid
-                        _ ->  HS.Var $ HS.UnQual $ HS.Ident pid -- errorPos p $ pid ++ " not in scope"
+     pure $ case M.lookup var scope of
+              Just t -> maybeUpcastPureInt t $ HS.Var $ HS.UnQual $ HS.Ident pid
+              Nothing -> case M.lookup var ?vars of
+                          Just t -> maybeUpcastInt t [hs| I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident pid) |]
+                          Nothing -> case M.lookup var ?fields of
+                                    Just t -> let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname -- accessor
+                                             in maybeUpcastPureInt t [hs| ($fieldFun this'') |]
+                                    Nothing-> case find (\ (SN ident' modul,_) -> pid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
+                                               Just (_,SV Foreign _) -> HS.Var $ HS.UnQual $ HS.Ident pid
+                                               _ ->  HS.Var $ HS.UnQual $ HS.Ident pid -- errorPos p $ pid ++ " not in scope" --  -- 
                 -- HS.Paren $ (if isInterface t
                 --             then HS.App (HS.Var $ identI "up") -- upcasting if it is of a class type
                 --             else id) 
+    where
+      maybeUpcastPureInt t = case t of
+                           ABS.TSimple (ABS.QTyp ([ABS.QTypeSegmen (ABS.UIdent (_,"Int"))])) -> (\ e -> [hs| I'.pure (I'.fromIntegral $e) |])
+                           _ -> (\ e -> [hs| I'.pure $e |])
+      maybeUpcastInt t = case t of
+                           ABS.TSimple (ABS.QTyp ([ABS.QTypeSegmen (ABS.UIdent (_,"Int"))])) -> (\ e -> [hs| (I'.fromIntegral <$> $e) |])
+                           _ -> id
+
                 
 
 -- tStmExp (ABS.EQualVar (ABS.TTyp tsegs) (ABS.LIdent (_,pid))) _tyvars = -- todo: we cannot use any scope, so we have to lookup the other modules, to check if it is of an interface type (upcast it) or int (fromIntegral) 
 --     return $ HS.Var $ HS.Qual (HS.ModuleName $ joinTTypeIds tsegs) $ HS.Ident pid
 --     -- we tread it as pure for now
 
-tStmExp (ABS.EThis (ABS.LIdent (_, field))) = if null ?cname
-                                               then error "cannot access fields in pure context"
-                                               else pure $ let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname
-                                                           in [hs| I'.pure ($fieldFun this'') |] -- accessor
+tStmExp (ABS.EThis var@(ABS.LIdent (p, field))) = if null ?cname
+                                                  then error "cannot access fields inside main block"
+                                                  else case M.lookup var ?fields of
+                                                         Just t -> pure $ maybeUpcastPureInt t [hs| ($fieldFun this'') |]
+                                                         Nothing -> errorPos p "no such field"
+  where
+    fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname -- accessor
+    maybeUpcastPureInt t = case t of
+                             ABS.TSimple (ABS.QTyp ([ABS.QTypeSegmen (ABS.UIdent (_,"Int"))])) -> (\ e -> [hs| I'.pure (I'.fromIntegral $e) |])
+                             _ -> (\ e -> [hs| I'.pure $e |])
+
 tStmExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LStr str ->  [hs| I'.pure $(HS.Lit $ HS.String str) |]
                                    ABS.LInt i ->  [hs| I'.pure $(HS.Lit $ HS.Int i) |]
                                    ABS.LThis -> if null ?cname
-                                               then error "cannot call this here"
+                                               then error "cannot access this keyword inside main block"
                                                else [hs| I'.pure (up' this) |]
                                    ABS.LNull -> [hs| I'.pure (up' null) |]
                                    ABS.LThisDC -> [hs| I'.pure thisDC |]

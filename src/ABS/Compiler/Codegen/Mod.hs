@@ -95,7 +95,7 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Prelude" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
-                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "IO", HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "putStrLn", HS.IVar $ HS.Ident "error", HS.IVar $ HS.Ident "negate"])
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "IO", HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "putStrLn", HS.IVar $ HS.Ident "error", HS.IVar $ HS.Ident "negate", HS.IVar $ HS.Ident "fromIntegral"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Unsafe.Coerce" 
@@ -111,7 +111,8 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
 
        -- TRANSLATED TOP-LEVEL DECLARATIONS
        (let ?st = st 
-        in concatMap (\ (ABS.AnnDec _ d) -> tDecl d) decls
+        in [dec| default (Int,Rat) |] -- better for type inference of numeric variables
+           : concatMap (\ (ABS.AnnDec _ d) -> tDecl d) decls
            ++ tMain maybeMain)
 
     where
