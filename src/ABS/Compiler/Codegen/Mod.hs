@@ -24,8 +24,9 @@ tModul (ABS.Modul modulQTyp exports imports decls maybeMain) allSymbolTables =
        [HS.LanguagePragma noLoc [ HS.Ident "NoImplicitPrelude" -- for not importing haskell's prelude
                                 , HS.Ident "ExistentialQuantification" -- for heterogeneous collections
                                 , HS.Ident "MultiParamTypeClasses" -- for subtyping
-                                , HS.Ident "PatternSignatures" -- for inlining type annotations
+                                , HS.Ident "ScopedTypeVariables" -- in ABS typevars are scoped(over the whole function),in Haskell not by default
                                 , HS.Ident "FlexibleContexts" -- for some type inference of methods
+                                , HS.Ident "PartialTypeSignatures" -- for inferring Eq,Ord contexts. Requires GHC>=7.10
                                 , HS.Ident "DeriveDataTypeable" -- for defining ABS exceptions (exceptions are dynamically typed in haskell)
                                 ]
        -- -fwarn-missing-methods:  for making error the missing ABS class methods

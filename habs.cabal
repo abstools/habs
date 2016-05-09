@@ -10,7 +10,7 @@ homepage: http://abs-models.org
 bug-reports: https://github.com/abstools/habs/issues
 
 stability: provisional
-tested-with: GHC == 7.8.4, GHC == 7.10.1, GHC == 7.10.2, GHC == 7.10.3
+tested-with: GHC == 7.10.1, GHC == 7.10.2, GHC == 7.10.3
 build-type: Simple
 cabal-version: >= 1.8
 
@@ -32,7 +32,8 @@ executable habs
   main-is: habs.hs         
   build-depends:
     -- base<=4.6 (i.e. GHC<=7.6.3) not supported because of no `tryReadMVar`
-    base >= 4.7 && < 5,
+    -- base<=4.7 (i.e. GHC<=7.8.4) not supported because of generated code relies on PartialTypeSignatures
+    base >= 4.8 && < 5,
     habs-parser,
     -- for outputting a Haskell AST
     haskell-src-exts >= 1.17.0,

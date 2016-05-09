@@ -35,7 +35,9 @@ tDecl (ABS.InterfDecl tid ms) = tDecl (ABS.ExtendsDecl tid [] ms)
 
 -- Functions
 tDecl (ABS.FunParDecl fReturnTyp (ABS.LIdent (_,fid)) tyvars params body) = [
-        HS.TypeSig noLoc [HS.Ident fid] (HS.TyForall (Just $ map (\(ABS.UIdent (_, tident)) -> HS.UnkindedVar $ HS.Ident $ headToLower tident) tyvars) [] $ 
+        -- note: trick because of bug in ghc-7.10 https://ghc.haskell.org/trac/ghc/ticket/10519
+        -- in ghc>=8 the typeclass wildcard should be the context after forall typevars.
+        HS.TypeSig noLoc [HS.Ident fid] (HS.TyForall Nothing [HS.WildCardA Nothing] $ HS.TyForall (Just $ map (\(ABS.UIdent (_, tident)) -> HS.UnkindedVar $ HS.Ident $ headToLower tident) tyvars) [] $ 
           foldr  -- function application is right-associative
           (\ (ABS.Par ptyp _) acc -> tTypeOrTyVar tyvars ptyp `HS.TyFun` acc) 
           (tTypeOrTyVar tyvars fReturnTyp) params)
