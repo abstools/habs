@@ -35,15 +35,12 @@ tDecl (ABS.InterfDecl tid ms) = tDecl (ABS.ExtendsDecl tid [] ms)
 
 -- Functions
 tDecl (ABS.FunParDecl fReturnTyp (ABS.LIdent (_,fid)) tyvars params body) = [
-        HS.FunBind [HS.Match noLoc (HS.Ident fid) (map (\ (ABS.Par ptyp (ABS.LIdent (_,pid))) -> 
-                                                            (\ pat -> case ptyp of
-                                                                       ABS.TUnderscore -> pat
-                                                                       _ -> HS.PatTypeSig noLoc pat (tTypeOrTyVar tyvars ptyp) -- wrap with an explicit type annotation
-                                                            ) (HS.PVar (HS.Ident pid))) params)
+        HS.TypeSig noLoc [HS.Ident fid] (HS.TyForall (Just $ map (\(ABS.UIdent (_, tident)) -> HS.UnkindedVar $ HS.Ident $ headToLower tident) tyvars) [] $ 
+          foldr  -- function application is right-associative
+          (\ (ABS.Par ptyp _) acc -> tTypeOrTyVar tyvars ptyp `HS.TyFun` acc) 
+          (tTypeOrTyVar tyvars fReturnTyp) params)
+      , HS.FunBind [HS.Match noLoc (HS.Ident fid) (map (\(ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar $ HS.Ident pid) params)
                           Nothing (HS.UnGuardedRhs $
-                                         (\ exp -> case fReturnTyp of
-                                                    ABS.TUnderscore -> exp -- infer the return type
-                                                    _ -> HS.ExpTypeSig noLoc exp (tTypeOrTyVar tyvars fReturnTyp)) -- wrap the return exp with an explicit type annotation
                                          (let ?tyvars = tyvars
                                               ?cname = []
                                               ?fields = M.empty
@@ -177,8 +174,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
   ++ -- the rest alone, non-interface methods, named as:  method''Class
   concatMap (\ (mname, ABS.MethClassBody retTyp _ mparams block) ->
            [ HS.TypeSig noLoc [HS.Ident $ mname ++ "''" ++ clsName] $
-               foldr  -- function application is right-associative
-               (\ tpar acc -> HS.TyFun tpar acc)
+               foldr HS.TyFun -- function application is right-associative
                (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "ABS'") (tType retTyp))
                (map (\ (ABS.Par typ _) -> tType typ) mparams ++ [(HS.TyApp 
                                                                        (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") 
@@ -311,8 +307,7 @@ tDecl (ABS.ExtendsDecl (ABS.UIdent (_,tname)) extends ms) = HS.ClassDecl noLoc
                               _ -> True) || not (null params))
         then errorPos mpos "run should have zero parameters and return type Unit"
         else HS.ClsDecl $ HS.TypeSig noLoc [HS.Ident mname] $
-               foldr  -- function application is right-associative
-                 (\ tpar acc -> HS.TyFun tpar acc)
+               foldr  HS.TyFun -- function application is right-associative
                  (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "ABS'") (tType retTyp))
                  (map (\ (ABS.Par typ _) -> tType typ) params ++ [(HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a"))]) -- last param is this
 
