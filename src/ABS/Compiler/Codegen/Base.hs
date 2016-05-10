@@ -6,6 +6,6 @@ import Data.Map (Map)
 
 import qualified ABS.AST as ABS
 
-type ExpScope = Reader (Map ABS.LIdent ABS.Type)
+type ExpScope = Reader (Map ABS.L ABS.T)
 
-type StmScope = State [Map ABS.LIdent ABS.Type]
+type StmScope = State [Map ABS.L ABS.T]

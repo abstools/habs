@@ -1,9 +1,8 @@
 module ABS.Compiler.Utils 
-    ( showQType
-    , showTType
-    , splitQType
-    , showAnyIdent
-    , tTypeToQType
+    ( showQU
+    , splitQU
+    , showQA
+    , splitQA
     , headToLower
     , errorPos, warnPos, showPos
     ) where
@@ -13,24 +12,28 @@ import Data.List (intercalate)
 import Data.Char (toLower)
 import Debug.Trace (trace)
 
-showQType :: ABS.QType -> String
-showQType (ABS.QTyp qsegs) = intercalate "." $ 
-                             map (\ (ABS.QTypeSegmen (ABS.UIdent (_,s))) -> s) qsegs
+showQU :: ABS.QU -> String
+showQU (ABS.U_ (ABS.U (_,ident))) = ident
+showQU (ABS.QU (ABS.U (_,ident)) rest) = ident ++ "." ++ showQU rest
 
-splitQType :: ABS.QType -> (String, String)
-splitQType (ABS.QTyp qsegs) = let ABS.QTypeSegmen (ABS.UIdent (_, ident)) = last qsegs
-                                  qualPrefix = init qsegs
-                              in (showQType $ ABS.QTyp qualPrefix, ident)
+splitQU :: ABS.QU -> (String, String)
+splitQU (ABS.U_ (ABS.U (_,ident))) = ("", ident)
+splitQU (ABS.QU (ABS.U (_,qualIdent)) rest) = let (qualRest, ident) = splitQU rest
+                                          in (qualIdent ++ "." ++ qualRest, ident)
 
-showTType :: ABS.TType -> String
-showTType = showQType . tTypeToQType
 
-tTypeToQType :: ABS.TType -> ABS.QType
-tTypeToQType (ABS.TTyp tsegs) = ABS.QTyp $ map (\ (ABS.TTypeSegmen iden) -> ABS.QTypeSegmen iden) tsegs
+showQA :: ABS.QA -> String
+showQA (ABS.UA (ABS.U (_,ident))) = ident
+showQA (ABS.LA (ABS.L (_,ident))) = ident
+showQA (ABS.QA (ABS.U (_,ident)) rest) = ident ++ "." ++ showQA rest
 
-showAnyIdent :: ABS.AnyIdent -> String
-showAnyIdent (ABS.AnyIden (ABS.LIdent (_, s))) = s
-showAnyIdent (ABS.AnyTyIden (ABS.UIdent (_, s))) = s
+
+splitQA :: ABS.QA -> (String, String)
+splitQA (ABS.UA (ABS.U (_,ident))) = ("", ident)
+splitQA (ABS.LA (ABS.L (_,ident))) = ("", ident)
+splitQA (ABS.QA (ABS.U (_,qualIdent)) rest) = let (qualRest, ident) = splitQA rest
+                                              in (qualIdent ++ "." ++ qualRest, ident)
+
 
 -- | Used for turning an ABS type variable (e.g. A,B,DgFx) to HS type variable (a,b,dgFx)
 headToLower :: String -> String

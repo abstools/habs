@@ -1,7 +1,7 @@
-{-# LANGUAGE CPP, LambdaCase #-}
+{-# LANGUAGE LambdaCase #-}
 module Main where
 
-import qualified ABS.AST as ABS (Program (Prog))
+import qualified ABS.AST as ABS (Program (Program))
 import qualified Language.Haskell.Exts.Syntax as HS (Module (..), ModuleName (..))
 import qualified Language.Haskell.Exts.Pretty as HS (prettyPrint)
 import ABS.Parser
@@ -15,10 +15,6 @@ import System.FilePath ((</>))
 import System.Directory (createDirectoryIfMissing)
 import System.IO (hPrint, stderr)
 
-#if __GLASGOW_HASKELL__ < 710
-import Control.Applicative (pure, (<$>), (<*>))
-#endif
-
 -- | The habs translator executable
 main :: IO ()
 main = 
@@ -26,7 +22,7 @@ main =
   then error "No ABS files to translate are given as input. Try --help"
   else do
      -- 0. parse all modules to their ASTs
-     modules <- concatMap (\case (_,Ok (ABS.Prog ms)) -> ms
+     modules <- concatMap (\case (_,Ok (ABS.Program ms)) -> ms
                                  (fileName, Bad msg) -> error $ fileName ++ " failed to parse. " ++ msg) 
                                  . concat <$> mapM parseFileOrDir (src_files cmdOpt)
      when (dump_ast cmdOpt) $ mapM_ (hPrint stderr) modules

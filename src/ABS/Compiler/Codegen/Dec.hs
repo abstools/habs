@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ImplicitParams, QuasiQuotes, TemplateHaskell, LambdaCase #-}
+{-# LANGUAGE ImplicitParams, QuasiQuotes, TemplateHaskell, LambdaCase #-}
 module ABS.Compiler.Codegen.Dec where
 
 import ABS.Compiler.Utils
@@ -18,30 +18,26 @@ import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Data.List (find)
 
-#if __GLASGOW_HASKELL__ < 710
-import Control.Applicative (pure, (<$>), (<*>))
-#endif
-
 tDecl :: (?st :: SymbolTable) => ABS.Decl -> [HS.Decl]
 
 -- Normalizations
-tDecl (ABS.FunDecl fReturnTyp fid params body) = tDecl (ABS.FunParDecl fReturnTyp fid [] params body) -- normalize to no type variables
-tDecl (ABS.ClassDecl tident fdecls maybeBlock mdecls) = tDecl (ABS.ClassParamImplements tident [] [] fdecls maybeBlock mdecls)
-tDecl (ABS.ClassParamDecl tident params fdecls maybeBlock mdecls) = tDecl (ABS.ClassParamImplements tident params [] fdecls maybeBlock mdecls)
-tDecl (ABS.ClassImplements tident imps fdecls maybeBlock mdecls) = tDecl (ABS.ClassParamImplements tident [] imps fdecls maybeBlock mdecls)
-tDecl (ABS.DataDecl tid constrs) =  tDecl (ABS.DataParDecl tid [] constrs) -- just parametric datatype with empty list of type variables
-tDecl (ABS.InterfDecl tid ms) = tDecl (ABS.ExtendsDecl tid [] ms) 
+tDecl (ABS.DFun fReturnTyp fid params body) = tDecl (ABS.DFunPoly fReturnTyp fid [] params body) -- normalize to no type variables
+tDecl (ABS.DData tid constrs) =  tDecl (ABS.DDataPoly tid [] constrs) -- just parametric datatype with empty list of type variables
+tDecl (ABS.DInterf tid ms) = tDecl (ABS.DExtends tid [] ms) 
+tDecl (ABS.DClass tident fdecls maybeBlock mdecls) = tDecl (ABS.DClassParImplements tident [] [] fdecls maybeBlock mdecls)
+tDecl (ABS.DClassPar tident params fdecls maybeBlock mdecls) = tDecl (ABS.DClassParImplements tident params [] fdecls maybeBlock mdecls)
+tDecl (ABS.DClassImplements tident imps fdecls maybeBlock mdecls) = tDecl (ABS.DClassParImplements tident [] imps fdecls maybeBlock mdecls)
 
 
 -- Functions
-tDecl (ABS.FunParDecl fReturnTyp (ABS.LIdent (_,fid)) tyvars params body) = [
+tDecl (ABS.DFunPoly fReturnTyp (ABS.L (_,fid)) tyvars params body) = [
         -- note: trick because of bug in ghc-7.10 https://ghc.haskell.org/trac/ghc/ticket/10519
         -- in ghc>=8 the typeclass wildcard should be the context after forall typevars.
-        HS.TypeSig noLoc [HS.Ident fid] (HS.TyForall Nothing [HS.WildCardA Nothing] $ HS.TyForall (Just $ map (\(ABS.UIdent (_, tident)) -> HS.UnkindedVar $ HS.Ident $ headToLower tident) tyvars) [] $ 
+        HS.TypeSig noLoc [HS.Ident fid] (HS.TyForall Nothing [HS.WildCardA Nothing] $ HS.TyForall (Just $ map (\(ABS.U (_, tident)) -> HS.UnkindedVar $ HS.Ident $ headToLower tident) tyvars) [] $ 
           foldr  -- function application is right-associative
-          (\ (ABS.Par ptyp _) acc -> tTypeOrTyVar tyvars ptyp `HS.TyFun` acc) 
+          (\ (ABS.FormalPar ptyp _) acc -> tTypeOrTyVar tyvars ptyp `HS.TyFun` acc) 
           (tTypeOrTyVar tyvars fReturnTyp) params)
-      , HS.FunBind [HS.Match noLoc (HS.Ident fid) (map (\(ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar $ HS.Ident pid) params)
+      , HS.FunBind [HS.Match noLoc (HS.Ident fid) (map (\(ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar $ HS.Ident pid) params)
                           Nothing (HS.UnGuardedRhs $
                                          (let ?tyvars = tyvars
                                               ?cname = []
@@ -52,18 +48,18 @@ tDecl (ABS.FunParDecl fReturnTyp (ABS.LIdent (_,fid)) tyvars params body) = [
 
 
 -- Classes
-tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mInit rdecls) = 
+tDecl (ABS.DClassParImplements (ABS.U (_,clsName)) cparams impls ldecls mInit rdecls) = 
 
   -- An ADT-record which contains the fields of the class
   HS.DataDecl noLoc HS.DataType [] (HS.Ident clsName) [] 
-        [HS.QualConDecl noLoc [] [] $ HS.RecDecl (HS.Ident clsName) (map (\ ((ABS.LIdent (_,i)), t) -> ([HS.Ident $  i ++ "'" ++ clsName], 
+        [HS.QualConDecl noLoc [] [] $ HS.RecDecl (HS.Ident clsName) (map (\ ((ABS.L (_,i)), t) -> ([HS.Ident $  i ++ "'" ++ clsName], 
                                                                                                                 tType t -- TODO: bang if prim type
                                                                                                       )) (M.toAscList fields))]  []
 
   : -- A smart-constructor for pure fields
   HS.FunBind [HS.Match noLoc (HS.Ident $ "smart'" ++ clsName)
     -- the class params serve as input-args to the smart constructor
-    (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) cparams) Nothing 
+    (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) cparams) Nothing 
     -- rhs
     (HS.UnGuardedRhs $ HS.RecConstr (HS.UnQual $ HS.Ident clsName) $
      let ?tyvars = []
@@ -71,35 +67,35 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
          ?fields = fields
      in 
        -- fields take their param value
-       (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.FieldUpdate (HS.UnQual $ HS.Ident $ pid ++ "'" ++ clsName) (HS.Var $ HS.UnQual $ HS.Ident pid)) cparams)
+       (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.FieldUpdate (HS.UnQual $ HS.Ident $ pid ++ "'" ++ clsName) (HS.Var $ HS.UnQual $ HS.Ident pid)) cparams)
        ++
        -- rest will be initialized by the class body, or default-initialized (futures, foreign, interfaces)
        runReader (foldlM (\ acc -> \case
                            
                    -- Field f = val;
-                   ABS.FieldAssignClassBody _t (ABS.LIdent (_, fid)) pexp -> do
+                   ABS.FieldAssignClassBody _t (ABS.L (_, fid)) pexp -> do
                       texp <- tPureExp pexp
                       return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) texp : acc
 
                    -- Field f;
-                   ABS.FieldClassBody t (ABS.LIdent (p,fid)) ->  case t of
+                   ABS.FieldClassBody t (ABS.L (p,fid)) ->  case t of
                                -- it is an unitialized future (abs allows this)
-                               ABS.TGen (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Fut"))])  _ -> 
+                               ABS.TPoly (ABS.U_ (ABS.U (_,"Fut")))  _ -> 
                                    return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) [hs| nullFuture' |] : acc
                                -- it may be an object (to be set to null) or foreign (to be set to undefined)
                                ABS.TSimple qtyp -> return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
-                                                  (let (prefix, ident) = splitQType qtyp
+                                                  (let (prefix, ident) = splitQU qtyp
                                                        Just (SV symbolType _) = if null prefix
                                                                                then snd <$> find (\ (SN ident' modul,_) -> ident == ident' && maybe True (not . snd) modul) (M.assocs ?st)
                                                                                else M.lookup (SN ident (Just (prefix, True))) ?st 
                                                    in case symbolType of
-                                                        Interface _ _ -> [hs| $(HS.Var $ HS.UnQual $ HS.Ident $ showQType qtyp) null |]
+                                                        Interface _ _ -> [hs| $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qtyp) null |]
                                                         Foreign -> [hs| (I'.error "foreign object not initialized") |]
                                                         _ -> errorPos p "A field must be initialised if it is not of a reference type"
                                                   ) : acc
                                -- it may be foreign (to be set to undefined)
-                               ABS.TGen qtyp _ -> return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
-                                                  (let (prefix, ident) = splitQType qtyp
+                               ABS.TPoly qtyp _ -> return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
+                                                  (let (prefix, ident) = splitQU qtyp
                                                        Just (SV symbolType _) = if null prefix
                                                                                 then M.lookup (SN ident Nothing) ?st
                                                                                 else M.lookup (SN ident (Just (prefix, False))) ?st 
@@ -108,11 +104,11 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                                         Foreign -> [hs| (I'.error "foreign object not initialized") |]
                                                         _ -> errorPos p "A field must be initialised if it is not of a reference type"
                                                   ) : acc
-                               ABS.TUnderscore -> errorPos p "Cannot infer type of field which has not been assigned"
+                               ABS.TInfer -> errorPos p "Cannot infer type of field which has not been assigned"
 
                    ABS.MethClassBody _ _ _ _ -> case mInit of
                                ABS.NoBlock -> return acc -- ignore, TODO: maybe this allows methclassbody to be intertwined with fieldbody
-                               ABS.JustBlock _ _-> fail "Second parsing error: Syntactic error, no method declaration accepted here"
+                               ABS.JustBlock _-> fail "Second parsing error: Syntactic error, no method declaration accepted here"
 
                           )
                    [] ldecls)
@@ -131,7 +127,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                     ABS.NoBlock -> if "run" `M.member` aloneMethods
                                   then runCall
                                   else [hs| return () |]
-                    ABS.JustBlock _ block -> if "run" `M.member` aloneMethods
+                    ABS.JustBlock block -> if "run" `M.member` aloneMethods
                                             then case tMethod block [] fields clsName (M.keys aloneMethods) True of
                                                    HS.Do stms -> HS.Do $ stms ++ [HS.Qualifier runCall]  -- append run statement
                                                    _ -> runCall -- runcall the only rhs
@@ -141,7 +137,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
 
   ++  -- The direct&indirect instances for interfaces
   concatMap (\ qtyp -> let 
-    (prefix, ident) = splitQType qtyp
+    (prefix, ident) = splitQU qtyp
     Just (SV (Interface directMethods extends) _) = if null prefix
                                                     then M.lookup (SN ident Nothing) ?st
                                                     else M.lookup (SN ident (Just (prefix, False))) ?st 
@@ -149,12 +145,12 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                       in 
     -- the direct instances
     HS.InstDecl noLoc Nothing [] [] 
-          (HS.UnQual $ HS.Ident $ showQType qtyp ++ "'") -- the interface name
+          (HS.UnQual $ HS.Ident $ showQU qtyp ++ "'") -- the interface name
           [HS.TyCon $ HS.UnQual $ HS.Ident $ clsName] -- the class name
           (fmap (\ mname -> let Just (ABS.MethClassBody typ _ mparams block) = M.lookup mname classMethods
                            in HS.InsDecl (HS.FunBind  [HS.Match noLoc (HS.Ident mname)
                                                        -- method params
-                                                       (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
+                                                       (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                                                        Nothing 
                                                        (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
                 ) directMethods)
@@ -166,7 +162,7 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
                                 (fmap (\ mname -> let Just (ABS.MethClassBody typ _ mparams block) = M.lookup mname classMethods
                                                  in HS.InsDecl (HS.FunBind  [HS.Match noLoc (HS.Ident mname) 
                                                                              -- method params
-                                                                             (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
+                                                                             (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                                                                              Nothing 
                                                                              (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
                                       ) indirectMethods) : acc
@@ -178,12 +174,12 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
            [ HS.TypeSig noLoc [HS.Ident $ mname ++ "''" ++ clsName] $
                foldr HS.TyFun -- function application is right-associative
                (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "ABS'") (tType retTyp))
-               (map (\ (ABS.Par typ _) -> tType typ) mparams ++ [(HS.TyApp 
+               (map (\ (ABS.FormalPar typ _) -> tType typ) mparams ++ [(HS.TyApp 
                                                                        (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") 
                                                                        (HS.TyCon $ HS.UnQual $ HS.Ident clsName))])
            , HS.FunBind  [HS.Match noLoc (HS.Ident $ mname ++ "''" ++ clsName)
                          -- method params
-                         (map (\ (ABS.Par _ (ABS.LIdent (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
+                         (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
                          Nothing 
                          (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing]] )
           (M.assocs aloneMethods)
@@ -192,15 +188,15 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
     -- The method names (both implementing & alone methods) of this class mapped to their bodies
     classMethods :: M.Map String ABS.ClassBody
     classMethods = M.fromList $ mapMaybe (\case 
-                                     m@(ABS.MethClassBody _ (ABS.LIdent (_,ident)) _ _) -> Just (ident,m)
+                                     m@(ABS.MethClassBody _ (ABS.L (_,ident)) _ _) -> Just (ident,m)
                                      _ -> Nothing)
                                     (case mInit of
                                        ABS.NoBlock -> ldecls
-                                       ABS.JustBlock _ _ -> rdecls)
+                                       ABS.JustBlock _ -> rdecls)
 
     -- All (class-params and declared) fields of this class
-    fields :: M.Map ABS.LIdent ABS.Type -- order matters, because the fields are indexed
-    fields = M.fromList $ map (\ (ABS.Par t i) -> (i,t)) cparams ++ mapMaybe (\case
+    fields :: M.Map ABS.L ABS.T -- order matters, because the fields are indexed
+    fields = M.fromList $ map (\ (ABS.FormalPar t i) -> (i,t)) cparams ++ mapMaybe (\case
                                                                                ABS.FieldClassBody t i -> Just (i,t)
                                                                                ABS.FieldAssignClassBody t i _ -> Just (i,t)
                                                                                ABS.MethClassBody _ _ _ _ -> Nothing
@@ -211,39 +207,39 @@ tDecl (ABS.ClassParamImplements (ABS.UIdent (_,clsName)) cparams impls ldecls mI
         where
           toImplementMethods :: [String]
           toImplementMethods = concatMap (\ (SV (Interface dmethods extends) _) -> concat $ dmethods : M.elems extends) $
-                         M.elems $ M.filterWithKey (\ (SN i _) _ -> i `elem` map (snd . splitQType) impls) ?st
+                         M.elems $ M.filterWithKey (\ (SN i _) _ -> i `elem` map (snd . splitQU) impls) ?st
 
 -- Type synonyms
-tDecl (ABS.TypeDecl (ABS.UIdent (_,tid)) typ) = [HS.TypeDecl noLoc (HS.Ident tid) [] (tType typ)]
+tDecl (ABS.DType (ABS.U (_,tid)) typ) = [HS.TypeDecl noLoc (HS.Ident tid) [] (tType typ)]
 
 -- Type synonyms with variables
-tDecl (ABS.TypeParDecl (ABS.UIdent (_,tid)) tyvars typ) = [HS.TypeDecl noLoc (HS.Ident tid) 
-                                                                 (map (\ (ABS.UIdent (_,varid)) -> 
+tDecl (ABS.DTypePoly (ABS.U (_,tid)) tyvars typ) = [HS.TypeDecl noLoc (HS.Ident tid) 
+                                                                 (map (\ (ABS.U (_,varid)) -> 
                                                                            HS.UnkindedVar $ HS.Ident $ headToLower varid)
                                                                   tyvars)
                                                                  (tTypeOrTyVar tyvars typ)
                                                           ]
 
 -- Datatypes
-tDecl (ABS.DataParDecl (ABS.UIdent (_,tid)) tyvars constrs) =  HS.DataDecl noLoc HS.DataType [] (HS.Ident tid) 
+tDecl (ABS.DDataPoly (ABS.U (_,tid)) tyvars constrs) =  HS.DataDecl noLoc HS.DataType [] (HS.Ident tid) 
 
           -- Type Variables
-          (map (\ (ABS.UIdent (_,varid)) -> HS.UnkindedVar $ HS.Ident $ headToLower varid) tyvars)
+          (map (\ (ABS.U (_,varid)) -> HS.UnkindedVar $ HS.Ident $ headToLower varid) tyvars)
 
           -- Data Constructors
           (map (\case
-                ABS.SinglConstrIdent (ABS.UIdent (_,cid)) -> HS.QualConDecl noLoc [] [] (HS.ConDecl (HS.Ident cid) []) 
-                ABS.ParamConstrIdent (ABS.UIdent (_,cid)) args -> HS.QualConDecl noLoc [] [] (HS.ConDecl (HS.Ident cid) (map (HS.TyBang HS.BangedTy . tTypeOrTyVar tyvars . typOfConstrType) args))) constrs) -- TODO: maybe only allow Banged Int,Double,... like the class-datatype
+                ABS.SinglConstrIdent (ABS.U (_,cid)) -> HS.QualConDecl noLoc [] [] (HS.ConDecl (HS.Ident cid) []) 
+                ABS.ParamConstrIdent (ABS.U (_,cid)) args -> HS.QualConDecl noLoc [] [] (HS.ConDecl (HS.Ident cid) (map (HS.TyBang HS.BangedTy . tTypeOrTyVar tyvars . typOfConstrType) args))) constrs) -- TODO: maybe only allow Banged Int,Double,... like the class-datatype
 
           -- Deriving
            ([(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])])
 
           -- Extra record-accessor functions
-          : map (\ (ABS.LIdent (_,fname), consname, idx, len) ->  
+          : map (\ (ABS.L (_,fname), consname, idx, len) ->  
                      HS.FunBind [HS.Match noLoc (HS.Ident fname) ([HS.PApp (HS.UnQual (HS.Ident consname)) (replicate idx HS.PWildCard ++ [HS.PVar (HS.Ident "a")] ++ replicate (len - idx - 1) HS.PWildCard)]) Nothing (HS.UnGuardedRhs (HS.Var (HS.UnQual (HS.Ident "a")))) Nothing]) (
              concatMap (\case
                ABS.SinglConstrIdent _ -> []
-               ABS.ParamConstrIdent (ABS.UIdent (_,cid)) args -> -- taking the indices of fields
+               ABS.ParamConstrIdent (ABS.U (_,cid)) args -> -- taking the indices of fields
                                          let len = length args
                                          in
                                             foldl (\ acc (field, idx) ->  case field of
@@ -251,15 +247,15 @@ tDecl (ABS.DataParDecl (ABS.UIdent (_,tid)) tyvars constrs) =  HS.DataDecl noLoc
                                                                             ABS.RecordConstrType _ fid -> (fid, cid, idx, len):acc) [] (zip args [0..])
               ) constrs )
     where
-      typOfConstrType :: ABS.ConstrType -> ABS.Type
+      typOfConstrType :: ABS.ConstrType -> ABS.T
       typOfConstrType (ABS.EmptyConstrType typ) = typ
       typOfConstrType (ABS.RecordConstrType typ _) = typ
 
          
 
 -- Interfaces
-tDecl (ABS.ExtendsDecl (ABS.UIdent (_,tname)) extends ms) = HS.ClassDecl noLoc 
-        (map (\ qtyp -> HS.ClassA (HS.UnQual $ HS.Ident $ showQType qtyp ++ "'") [HS.TyVar (HS.Ident "a")]) extends) -- super-interfaces
+tDecl (ABS.DExtends (ABS.U (_,tname)) extends ms) = HS.ClassDecl noLoc 
+        (map (\ qtyp -> HS.ClassA (HS.UnQual $ HS.Ident $ showQU qtyp ++ "'") [HS.TyVar (HS.Ident "a")]) extends) -- super-interfaces
         (HS.Ident $ tname ++ "'") -- name of interface
         [HS.UnkindedVar (HS.Ident "a")] -- all interfaces have kind * -> *
         []
@@ -281,7 +277,7 @@ tDecl (ABS.ExtendsDecl (ABS.UIdent (_,tname)) extends ms) = HS.ClassDecl noLoc
 
        -- null class is an instance of any interface
        : HS.InstDecl noLoc Nothing [] [] (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyCon $ HS.UnQual $ HS.Ident "Null'"] 
-             (map (\ (ABS.AnnMethSig _ (ABS.MethSig _ (ABS.LIdent (_,mid)) _)) -> 
+             (map (\ (ABS.MethSig _ _ (ABS.L (_,mid)) _) -> 
                        HS.InsDecl [dec| __mid__ = I'.error  "this should not happen. report the program to the compiler developers" |] ) ms)
 
 
@@ -302,16 +298,16 @@ tDecl (ABS.ExtendsDecl (ABS.UIdent (_,tname)) extends ms) = HS.ClassDecl noLoc
 
     where
     -- method_signature :: args -> Obj a (THIS) -> (res -> ABS ()) -> ABS ()
-    tMethSig :: String -> ABS.AnnotMethSignat -> HS.ClassDecl
-    tMethSig interName (ABS.AnnMethSig _ (ABS.MethSig retTyp (ABS.LIdent (mpos,mname)) params)) = 
+    tMethSig :: String -> ABS.MethSig -> HS.ClassDecl
+    tMethSig interName (ABS.MethSig _ retTyp (ABS.L (mpos,mname)) params) = 
         if mname == "run" && ((case retTyp of
-                              ABS.TSimple (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_, "Unit"))]) -> False
+                              ABS.TSimple (ABS.U_ (ABS.U (_, "Unit"))) -> False
                               _ -> True) || not (null params))
         then errorPos mpos "run should have zero parameters and return type Unit"
         else HS.ClsDecl $ HS.TypeSig noLoc [HS.Ident mname] $
                foldr  HS.TyFun -- function application is right-associative
                  (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "ABS'") (tType retTyp))
-                 (map (\ (ABS.Par typ _) -> tType typ) params ++ [(HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a"))]) -- last param is this
+                 (map (\ (ABS.FormalPar typ _) -> tType typ) params ++ [(HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a"))]) -- last param is this
 
     generateSubForAllSupers :: (?st :: SymbolTable) => [HS.Decl]
     generateSubForAllSupers = case M.lookup (SN tname Nothing) ?st of

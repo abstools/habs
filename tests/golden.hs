@@ -11,7 +11,7 @@ import Test.Tasty.Runners.Html
 import qualified ABS.AST as ABS
 import qualified ABS.Parser as ABS
 import ABS.Compiler.Codegen.Mod (tModul)
-import ABS.Compiler.Utils (showQType)
+import ABS.Compiler.Utils (showQU)
 import ABS.Compiler.Firstpass.SymbolTable (globalSTs)
 import qualified Language.Haskell.Exts.Pretty as HS (prettyPrint)
 
@@ -70,9 +70,9 @@ main = do
 transpile parentDir sample = do
   res <- ABS.parseFile (parentDir </> sample <.> "abs")
   case res of
-    (_, ABS.Ok (ABS.Prog ms)) -> let symbolTables = globalSTs ms
-                                in mapM_ (\ m@(ABS.Modul mname _ _ _ _) ->
-                                             writeFile (hsOutputDir </> showQType mname <.> "hs") $ 
-                                             HS.prettyPrint $ tModul m symbolTables) ms
+    (_, ABS.Ok (ABS.Program ms)) -> let symbolTables = globalSTs ms
+                                    in mapM_ (\ m@(ABS.Module mname _ _ _ _) ->
+                                               writeFile (hsOutputDir </> showQU mname <.> "hs") $ 
+                                               HS.prettyPrint $ tModul m symbolTables) ms
     -- (_, ABS.Ok _) -> fail "no multiple modules supported in the test"
     _ -> fail "ABS parse error"

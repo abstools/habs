@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ImplicitParams, QuasiQuotes #-}
+{-# LANGUAGE ImplicitParams, QuasiQuotes #-}
 module ABS.Compiler.Codegen.Exp
     ( tFunBody
     , tPureExp
@@ -18,60 +18,56 @@ import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
 import Data.List (find)
 
-#if __GLASGOW_HASKELL__ < 710
-import Control.Applicative (pure, (<$>), (<*>))
-#endif
-
 -- | Translating the body of a pure function
-tFunBody :: ( ?st::SymbolTable, ?tyvars::[ABS.UIdent], ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 
-           ABS.FunBody -> [ABS.Param] -> HS.Exp
+tFunBody :: ( ?st::SymbolTable, ?tyvars::[ABS.U], ?fields :: M.Map ABS.L ABS.T, ?cname :: String) => 
+           ABS.FunBody -> [ABS.FormalPar] -> HS.Exp
 tFunBody ABS.BuiltinFunBody _params = [hs| (I'.error "builtin called") |] -- builtin turned to undefined
 tFunBody (ABS.NormalFunBody pexp) params = runReader (tPureExp pexp) 
-                                           (M.fromList $ map (\ (ABS.Par t i) -> (i,t)) params) -- initial function scope is the formal params
+                                           (M.fromList $ map (\ (ABS.FormalPar t i) -> (i,t)) params) -- initial function scope is the formal params
 
 -- | Translating a pure expression
-tPureExp :: ( ?st::SymbolTable, ?tyvars::[ABS.UIdent], ?fields :: M.Map ABS.LIdent ABS.Type, ?cname :: String) => 
+tPureExp :: ( ?st::SymbolTable, ?tyvars::[ABS.U], ?fields :: M.Map ABS.L ABS.T, ?cname :: String) => 
            ABS.PureExp -> ExpScope HS.Exp
 
-tPureExp (ABS.If predE thenE elseE) = do
+tPureExp (ABS.EIf predE thenE elseE) = do
   tpred <- tPureExp predE
   tthen <- tPureExp thenE
   telse <- tPureExp elseE
   pure [hs| if $tpred then $tthen else $telse |]
 
-tPureExp (ABS.Let (ABS.Par ptyp pid@(ABS.LIdent (_,var))) eqE inE) = do
+tPureExp (ABS.ELet (ABS.FormalPar ptyp pid@(ABS.L (_,var))) eqE inE) = do
   tin <- local (M.insert pid ptyp) $ tPureExp inE -- adds to scope
   teq <- tPureExp eqE
   let pat = HS.Ident var
   pure $ case ptyp of
-             ABS.TUnderscore -> [hs| (\ ((pat)) -> $tin) $teq |] -- don't add type-sig, infer it
+             ABS.TInfer -> [hs| (\ ((pat)) -> $tin) $teq |] -- don't add type-sig, infer it
              _ -> let typ = tTypeOrTyVar ?tyvars ptyp
                  in [hs| (\ ((pat)) -> $tin) ( $teq :: ((typ)) ) |] -- maps to a haskell lambda exp
 
-tPureExp (ABS.Case ofE branches) = do
+tPureExp (ABS.ECase ofE branches) = do
   tof <- tPureExp ofE
   HS.Case tof <$>
-    mapM (\ (ABS.CaseBranc pat pexp) -> do
+    mapM (\ (ABS.ECaseBranch pat pexp) -> do
             texp <- tPureExp pexp
             pure $ HS.Alt noLoc (tPattern pat) (HS.UnGuardedRhs texp) Nothing
          ) branches
 
-tPureExp (ABS.EFunCall (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
+tPureExp (ABS.EFunCall (ABS.L_ (ABS.L (_,cid))) args) = HS.Paren <$> foldlM
                                                     (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                     (HS.Var $ HS.UnQual $ HS.Ident cid)
                                                     args
-tPureExp (ABS.EQualFunCall ttyp (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
-                                                             (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                                                             (HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid)
-                                                             args
+--tPureExp (ABS.EQualFunCall ttyp (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
+--                                                             (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+--                                                             (HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid)
+--                                                             args
 
-tPureExp (ABS.ENaryFunCall (ABS.LIdent (_,cid)) args) = 
+tPureExp (ABS.ENaryFunCall (ABS.L_ (ABS.L (_,cid))) args) = 
     HS.Paren . HS.App (HS.Var $ HS.UnQual $ HS.Ident cid)
           <$> HS.List <$> mapM tPureExp args
 
-tPureExp (ABS.ENaryQualFunCall ttyp (ABS.LIdent (_,cid)) args) = do
-    HS.Paren . HS.App (HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid)
-          <$> HS.List <$> mapM tPureExp args
+--tPureExp (ABS.ENaryQualFunCall ttyp (ABS.LIdent (_,cid)) args) = do
+--    HS.Paren . HS.App (HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid)
+--          <$> HS.List <$> mapM tPureExp args
 
 -- constants
 tPureExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LNull)) = pure [hs| True |]
@@ -79,22 +75,22 @@ tPureExp (ABS.EEq (ABS.ELit ABS.LThis) (ABS.ELit ABS.LThis)) = pure [hs| True |]
 tPureExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LThis)) = pure [hs| False |]
 
 -- optimization, to wrap null with the direct interface of rhs instead of up'
-tPureExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.LIdent (p,str)))) = do
+tPureExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.L (p,str)))) = do
    scope <- ask
    tvar <- tPureExp pvar
    pure $ case M.lookup ident (scope `M.union` ?fields) of -- check the type of the right var
-            Just (ABS.TSimple qtyp) -> [hs| ( $(HS.Var $ HS.UnQual $ HS.Ident (showQType qtyp)) null == $tvar ) |]
+            Just (ABS.TSimple qu) -> [hs| ( $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null == $tvar ) |]
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " variable not in scope or has foreign type"
 -- commutative
 tPureExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit (ABS.LNull))) = tPureExp (ABS.EEq pnull pvar)
 
 -- optimization, to wrap null with the direct interface of rhs instead of up'
-tPureExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EThis ident@(ABS.LIdent (p,str)))) = do
+tPureExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EThis ident@(ABS.L (p,str)))) = do
    scope <- ask
    tvar <- tPureExp pvar
    pure $ case M.lookup ident ?fields of -- check the type of the right var
-            Just (ABS.TSimple qtyp) -> [hs| ( $(HS.Var $ HS.UnQual $ HS.Ident (showQType qtyp)) null == $tvar ) |]
+            Just (ABS.TSimple qu) -> [hs| ( $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null == $tvar ) |]
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " not in scope"
 -- commutative
@@ -143,36 +139,36 @@ tPureExp (ABS.EMod l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($t
 tPureExp (ABS.ELogNeg e) = do te <- tPureExp e; pure [hs| (not $te) |]
 tPureExp (ABS.EIntNeg e) = do te <- tPureExp e; pure [hs| (- $te) |]
 
-tPureExp (ABS.ESinglConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Unit"))]))     = pure [hs| () |]
-tPureExp (ABS.ESinglConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Nil"))]))      = pure [hs| [] |]
-tPureExp (ABS.ESinglConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"EmptyMap"))])) = pure [hs| _emptyMap |]
-tPureExp (ABS.ESinglConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"EmptySet"))])) = pure [hs| _emptySet |]
-tPureExp (ABS.ESinglConstr qtyp) = pure $ HS.Con $ HS.UnQual $ HS.Ident $ showQType qtyp
+tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Unit"))))     = pure [hs| () |]
+tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Nil"))))      = pure [hs| [] |]
+tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptyMap")))) = pure [hs| _emptyMap |]
+tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptySet")))) = pure [hs| _emptySet |]
+tPureExp (ABS.ESinglConstr qu) = pure $ HS.Con $ HS.UnQual $ HS.Ident $ showQU qu
 
-tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"Triple"))]) pexps) =   
+tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Triple"))) pexps) =   
     if length pexps == 3
     then HS.Paren . HS.Tuple HS.Boxed <$> mapM tPureExp pexps
     else errorPos p "wrong number of arguments to Triple"
-tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"Pair"))]) pexps) = 
+tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Pair"))) pexps) = 
     if length pexps == 2
     then HS.Paren . HS.Tuple HS.Boxed <$> mapM tPureExp pexps
     else errorPos p "wrong number of arguments to Pair"
-tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"Cons"))]) [l, r]) = do
+tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"Cons"))) [l, r]) = do
    tl <- tPureExp l
    tr <- tPureExp r
    pure $ [hs| ($tl : $tr) |]
-tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"Cons"))]) _) = errorPos p "wrong number of arguments to Cons"
-tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (_,"InsertAssoc"))]) [l, r]) = do
+tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Cons"))) _) = errorPos p "wrong number of arguments to Cons"
+tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"InsertAssoc"))) [l, r]) = do
   tl <- tPureExp l
   tr <- tPureExp r
   pure $ [hs| (insertAssoc $tl $tr) |]
-tPureExp (ABS.EParamConstr (ABS.QTyp [ABS.QTypeSegmen (ABS.UIdent (p,"InsertAssoc"))]) _) = errorPos p "wrong number of arguments to InsertAssoc"
-tPureExp (ABS.EParamConstr qtyp args) = HS.Paren <$>
+tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"InsertAssoc"))) _) = errorPos p "wrong number of arguments to InsertAssoc"
+tPureExp (ABS.EParamConstr qu args) = HS.Paren <$>
     foldlM (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-    (HS.Con $ HS.UnQual $ HS.Ident $ showQType qtyp)
+    (HS.Con $ HS.UnQual $ HS.Ident $ showQU qu)
     args
 
-tPureExp (ABS.EVar var@(ABS.LIdent (p,pid))) = do
+tPureExp (ABS.EVar var@(ABS.L (p,pid))) = do
      scope <- ask
      pure $ case M.lookup var scope of
               Just t -> maybeUpcast t $ HS.Var $ HS.UnQual $ HS.Ident pid
@@ -186,7 +182,7 @@ tPureExp (ABS.EVar var@(ABS.LIdent (p,pid))) = do
                                        _ ->  HS.Var $ HS.UnQual $ HS.Ident pid -- errorPos p $ pid ++ " not in scope" -- 
 
 
-tPureExp (ABS.EThis var@(ABS.LIdent (p, field))) = if null ?cname
+tPureExp (ABS.EThis var@(ABS.L (p, field))) = if null ?cname
                                                    then errorPos p "cannot access fields inside main block or pure code"
                                                    else case M.lookup var ?fields of
                                                           Just t -> let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname
@@ -207,11 +203,11 @@ tPureExp (ABS.ELit lit) = pure $ case lit of
 ------------
 
 -- | upcasting an expression
-maybeUpcast :: (?st::M.Map SymbolName SymbolValue) => ABS.Type -> HS.Exp -> HS.Exp
+maybeUpcast :: (?st::M.Map SymbolName SymbolValue) => ABS.T -> HS.Exp -> HS.Exp
 maybeUpcast t = case t of
-  ABS.TSimple (ABS.QTyp ([ABS.QTypeSegmen (ABS.UIdent (_,"Int"))])) -> (\ e -> [hs| (I'.fromIntegral $e) |])
-  ABS.TSimple qtyp -> let (prefix, iident) = splitQType qtyp 
-                     in case find (\ (SN ident' mmodule,_) -> iident == ident' && maybe (null prefix) ((prefix,True) ==) mmodule) (M.assocs ?st) of
+  ABS.TSimple (ABS.U_ (ABS.U (_,"Int"))) -> (\ e -> [hs| (I'.fromIntegral $e) |])
+  ABS.TSimple qtyp -> let (prefix, iident) = splitQU qtyp 
+                      in case find (\ (SN ident' mmodule,_) -> iident == ident' && maybe (null prefix) ((prefix,True) ==) mmodule) (M.assocs ?st) of
                           Just (_,SV (Interface _ _) _) -> (\ e -> [hs| (up' $e) |]) -- is interface
                           _ -> id
   _ -> id
