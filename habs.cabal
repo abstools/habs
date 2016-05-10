@@ -70,7 +70,7 @@ test-suite golden
   type: exitcode-stdio-1.0
   main-is: golden.hs
   build-depends:
-    base >= 4.7 && < 5,
+    base >= 4.8 && < 5,
     tasty,
     tasty-hunit,
     tasty-program,

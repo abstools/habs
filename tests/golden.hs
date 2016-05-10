@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
 import Test.Tasty
@@ -21,10 +21,6 @@ import System.FilePath ((</>), (<.>), dropExtension)
 import Data.List (isSuffixOf)
 
 import Control.Exception (catch, SomeException)  --  hack for neg tests
-
-#if __GLASGOW_HASKELL__ < 710
-import Control.Applicative
-#endif
 
 hsOutputDir = "./dist/test/gen/haskell"
 
