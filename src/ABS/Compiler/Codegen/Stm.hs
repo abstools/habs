@@ -8,6 +8,7 @@ import ABS.Compiler.Codegen.Base
 import ABS.Compiler.Firstpass.Base
 import ABS.Compiler.Codegen.Exp (tPureExp)
 import ABS.Compiler.Codegen.StmExp (tStmExp)
+import ABS.Compiler.Codegen.Pat
 import ABS.Compiler.Codegen.Typ
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
@@ -1093,6 +1094,35 @@ tStm (ABS.AnnStm _ (ABS.SIfElse pexp stmThen stmElse)) = do
                   maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this' |])                 
               in [ HS.Generator noLoc (HS.PVar $ HS.Ident "if'") (maybeLift $ maybeWrapThis tpred)
                  , HS.Qualifier [hs| if if' then $tthen else $telse |]]
+
+
+tStm (ABS.AnnStm _ (ABS.SCase pexp branches)) = do
+  scopeLevels <- get
+  (locals,fields,hasForeigns) <- depends pexp
+  tbranches <- mapM (\ (ABS.SCaseBranch pat branchStm) -> do
+                                                         tstm <- (\case 
+                                                                    [] -> [hs| I'.pure () |]
+                                                                    [HS.Qualifier tblock'] -> tblock') 
+                                                                 <$> tStm (case branchStm of
+                                                                              block@(ABS.AnnStm _ (ABS.SBlock _)) -> block
+                                                                              stm -> ABS.AnnStm [] (ABS.SBlock [stm])) -- if single statement, wrap it in a new DO-scope
+                                                         pure $ HS.Alt noLoc (tPattern pat) (HS.UnGuardedRhs tstm) Nothing
+                    ) branches
+  let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+  pure $ if null locals && not hasForeigns
+         then let tpred = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+                  maybeWrapThis = if null fields 
+                                  then id 
+                                  else if ?isInit 
+                                       then (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this' |])
+                                       else (\ e -> [hs| (\ this'' -> $e) =<< I'.lift (I'.readIORef this') |])
+              in [HS.Qualifier $ maybeWrapThis $ HS.Case tpred tbranches]
+         else let tpred = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+                  maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
+                  maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this' |])                 
+              in [ HS.Generator noLoc (HS.PVar $ HS.Ident "case'") (maybeLift $ maybeWrapThis tpred)
+                 , HS.Qualifier $ HS.Case [hs|case'|] tbranches ]
+
 
 -- OTHER STATEMENTS
 --------------------------------
