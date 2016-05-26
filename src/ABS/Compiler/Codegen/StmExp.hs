@@ -72,7 +72,7 @@ tStmExp (ABS.EFunCall (ABS.L_ (ABS.L (_,cid))) args) =  case find (\ (SN ident' 
 
 tStmExp (ABS.ENaryFunCall (ABS.L_ (ABS.L (_,cid))) args) = do
     targs <- HS.List <$> mapM tStmExp args
-    pure [hs| ($(HS.Var $ HS.UnQual $ HS.Ident cid) <$> (I'.sequence $targs)) |]
+    pure [hs| ($(HS.Var $ HS.UnQual $ HS.Ident cid) <$!> (I'.sequence $targs)) |]
 
 
 --tStmExp (ABS.ENaryQualFunCall ttyp (ABS.LIdent (_,cid)) args) = do
@@ -89,7 +89,7 @@ tStmExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.L (p,str))
    scope <- ask
    tvar <- tStmExp pvar
    pure $ case M.lookup ident (scope `M.union` ?vars `M.union` ?fields) of -- check the type of the right var
-            Just (ABS.TSimple qu) -> [hs| ((==) ($(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null) <$> $tvar) |]
+            Just (ABS.TSimple qu) -> [hs| ((==) ($(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null) <$!> $tvar) |]
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " variable not in scope or has foreign type"
 -- commutative
@@ -100,7 +100,7 @@ tStmExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EThis ident@(ABS.L (p,str)
    scope <- ask
    tvar <- tStmExp pvar
    pure $ case M.lookup ident ?fields of -- check the type of the right var
-            Just (ABS.TSimple qu) -> [hs| ((==) ($(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null) <$> $tvar) |]
+            Just (ABS.TSimple qu) -> [hs| ((==) ($(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null) <$!> $tvar) |]
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " not in scope"
 -- commutative
@@ -130,25 +130,25 @@ tStmExp (ABS.EEq pvar@(ABS.EThis _) pnull@(ABS.ELit (ABS.LNull))) = tStmExp (ABS
 --     Nothing -> errorPos p1 $ str1 ++ " not in scope"
 
 -- a catch-all for literals,constructors maybe coupled with vars
-tStmExp (ABS.EEq l r) = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((==) <$> $tl <*> $tr) |]
+tStmExp (ABS.EEq l r) = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((==) <$!> $tl <*> $tr) |]
 
 -- -- normalizes to not . ==
 tStmExp (ABS.ENeq left right) = tStmExp (ABS.ELogNeg $ ABS.EEq left right) 
 
 -- -- be careful to parenthesize infix apps
-tStmExp (ABS.EOr l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((||) <$> $tl <*> $tr) |]
-tStmExp (ABS.EAnd l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((^) <$> $tl <*> $tr) |]
-tStmExp (ABS.ELt l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((<) <$> $tl <*> $tr) |]
-tStmExp (ABS.ELe l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((<=) <$> $tl <*> $tr) |]
-tStmExp (ABS.EGt l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((>) <$> $tl <*> $tr) |]
-tStmExp (ABS.EGe l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((>=) <$> $tl <*> $tr) |]
-tStmExp (ABS.EAdd l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((+) <$> $tl <*> $tr) |]
-tStmExp (ABS.ESub l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((-) <$> $tl <*> $tr) |]
-tStmExp (ABS.EMul l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((*) <$> $tl <*> $tr) |]
-tStmExp (ABS.EDiv l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((/) <$> $tl <*> $tr) |]
-tStmExp (ABS.EMod l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((%) <$> $tl <*> $tr) |]
-tStmExp (ABS.ELogNeg e) = do te <- tStmExp e; pure [hs| ((not) <$> $te) |]
-tStmExp (ABS.EIntNeg e) = do te <- tStmExp e; pure [hs| (I'.negate <$> $te) |]
+tStmExp (ABS.EOr l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((||) <$!> $tl <*> $tr) |]
+tStmExp (ABS.EAnd l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((^) <$!> $tl <*> $tr) |]
+tStmExp (ABS.ELt l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((<) <$!> $tl <*> $tr) |]
+tStmExp (ABS.ELe l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((<=) <$!> $tl <*> $tr) |]
+tStmExp (ABS.EGt l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((>) <$!> $tl <*> $tr) |]
+tStmExp (ABS.EGe l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((>=) <$!> $tl <*> $tr) |]
+tStmExp (ABS.EAdd l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((+) <$!> $tl <*> $tr) |]
+tStmExp (ABS.ESub l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((-) <$!> $tl <*> $tr) |]
+tStmExp (ABS.EMul l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((*) <$!> $tl <*> $tr) |]
+tStmExp (ABS.EDiv l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((/) <$!> $tl <*> $tr) |]
+tStmExp (ABS.EMod l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs| ((%) <$!> $tl <*> $tr) |]
+tStmExp (ABS.ELogNeg e) = do te <- tStmExp e; pure [hs| ((not) <$!> $te) |]
+tStmExp (ABS.EIntNeg e) = do te <- tStmExp e; pure [hs| (I'.negate <$!> $te) |]
 
 tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Unit"))))     = pure [hs| I'.pure () |]
 tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Nil"))))      = pure [hs| I'.pure [] |]
@@ -163,7 +163,7 @@ tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Triple"))) pexps) =
       texp1 <- tStmExp pexp1
       texp2 <- tStmExp pexp2
       texp3 <- tStmExp pexp3
-      pure [hs| ((,,) <$> $texp1 <*> $texp2 <*> $texp3) |]
+      pure [hs| ((,,) <$!> $texp1 <*> $texp2 <*> $texp3) |]
     else errorPos p "wrong number of arguments to Triple"
 tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Pair"))) pexps) = 
     if length pexps == 2
@@ -171,17 +171,17 @@ tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Pair"))) pexps) =
       let [pexp1,pexp2] = pexps
       texp1 <- tStmExp pexp1
       texp2 <- tStmExp pexp2
-      pure [hs| ((,) <$> $texp1 <*> $texp2) |]
+      pure [hs| ((,) <$!> $texp1 <*> $texp2) |]
     else errorPos p "wrong number of arguments to Pair"
 tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"Cons"))) [l, r]) = do
    tl <- tStmExp l
    tr <- tStmExp r
-   pure $ [hs| ((:) <$> $tl <*> $tr) |]
+   pure $ [hs| ((:) <$!> $tl <*> $tr) |]
 tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Cons"))) _) = errorPos p "wrong number of arguments to Cons"
 tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"InsertAssoc"))) [l, r]) = do
   tl <- tStmExp l
   tr <- tStmExp r
-  pure $ [hs| (insertAssoc <$> $tl <*> $tr) |]
+  pure $ [hs| (insertAssoc <$!> $tl <*> $tr) |]
 tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"InsertAssoc"))) _) = errorPos p "wrong number of arguments to InsertAssoc"
 tStmExp (ABS.EParamConstr qu args) = HS.Paren <$>
     foldlM
@@ -237,9 +237,9 @@ maybePureUpcast t = case t of
 
 maybeEffUpcast :: (?st::M.Map SymbolName SymbolValue) => ABS.T -> HS.Exp -> HS.Exp
 maybeEffUpcast t = case t of
-  ABS.TSimple (ABS.U_ (ABS.U (_,"Int"))) -> (\ e -> [hs| (I'.fromIntegral <$> $e) |])
+  ABS.TSimple (ABS.U_ (ABS.U (_,"Int"))) -> (\ e -> [hs| (I'.fromIntegral <$!> $e) |])
   ABS.TSimple qtyp -> let (prefix, iident) = splitQU qtyp 
                      in case find (\ (SN ident' mmodule,_) -> iident == ident' && maybe (null prefix) ((prefix,True) ==) mmodule) (M.assocs ?st) of
-                          Just (_,SV (Interface _ _) _) -> (\ e -> [hs| (up' <$> $e) |]) -- is interface
+                          Just (_,SV (Interface _ _) _) -> (\ e -> [hs| (up' <$!> $e) |]) -- is interface
                           _ -> id
   _ -> id
