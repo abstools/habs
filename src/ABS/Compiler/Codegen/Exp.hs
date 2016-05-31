@@ -192,6 +192,7 @@ tPureExp (ABS.EThis var@(ABS.L (p, field))) = if null ?cname
 tPureExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LStr str ->  HS.Lit $ HS.String str
                                    ABS.LInt i ->  HS.Lit $ HS.Int i
+                                   ABS.LFloat f -> HS.Lit $ HS.Frac $ toRational f
                                    ABS.LThis -> if null ?cname
                                                then error "cannot access this keyword inside main block or pure code"
                                                else [hs| (up' this) |]

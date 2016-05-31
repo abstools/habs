@@ -213,6 +213,7 @@ tStmExp (ABS.EThis var@(ABS.L (p, field))) = if null ?cname
 tStmExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LStr str ->  [hs| I'.pure $(HS.Lit $ HS.String str) |]
                                    ABS.LInt i ->  [hs| I'.pure $(HS.Lit $ HS.Int i) |]
+                                   ABS.LFloat f -> [hs| I'.pure $(HS.Lit $ HS.Frac $ toRational f) |]
                                    ABS.LThis -> if null ?cname
                                                then error "cannot access this keyword inside main block"
                                                else [hs| I'.pure (up' this) |]
