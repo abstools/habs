@@ -143,8 +143,16 @@ tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Unit"))))     = pure [hs| () |]
 tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Nil"))))      = pure [hs| [] |]
 tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptyMap")))) = pure [hs| _emptyMap |]
 tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptySet")))) = pure [hs| _emptySet |]
-tPureExp (ABS.ESinglConstr qu) = pure $ HS.Con $ HS.UnQual $ HS.Ident $ showQU qu
-
+tPureExp (ABS.ESinglConstr qu) = pure $ maybeUpException $ HS.Con $ HS.UnQual $ HS.Ident $ showQU qu
+  where (modul,ident) = splitQU qu
+        maybeUpException = if null modul
+                           then case find (\ (SN ident' modul',_) -> ident == ident' && maybe True (not . snd) modul') (M.assocs ?st) of
+                                  Just (_,SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  _ -> id
+                           else case M.lookup (SN ident (Just (modul, True))) ?st of
+                                  Just (SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  _ -> id
+                          
 tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Triple"))) pexps) =   
     if length pexps == 3
     then HS.Paren . HS.Tuple HS.Boxed <$> mapM tPureExp pexps
@@ -163,11 +171,19 @@ tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"InsertAssoc"))) [l, r]) = do
   tr <- tPureExp r
   pure $ [hs| (insertAssoc $tl $tr) |]
 tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"InsertAssoc"))) _) = errorPos p "wrong number of arguments to InsertAssoc"
-tPureExp (ABS.EParamConstr qu args) = HS.Paren <$>
-    foldlM (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-    (HS.Con $ HS.UnQual $ HS.Ident $ showQU qu)
-    args
-
+tPureExp (ABS.EParamConstr qu args) = maybeUpException . HS.Paren <$>
+                                        foldlM (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                        (HS.Con $ HS.UnQual $ HS.Ident $ showQU qu)
+                                        args
+  where (modul,ident) = splitQU qu
+        maybeUpException = if null modul
+                           then case find (\ (SN ident' modul',_) -> ident == ident' && maybe True (not . snd) modul') (M.assocs ?st) of
+                                  Just (_,SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  _ -> id
+                           else case M.lookup (SN ident (Just (modul, True))) ?st of
+                                  Just (SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  _ -> id
+    
 tPureExp (ABS.EVar var@(ABS.L (p,pid))) = do
      scope <- ask
      pure $ case M.lookup var scope of

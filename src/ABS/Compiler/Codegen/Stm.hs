@@ -903,7 +903,7 @@ tStm (ABS.AnnStm _ (ABS.SReturn (ABS.ExpP pexp))) = do
   (locals, fields,hasForeigns) <- depends pexp
   let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
       maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
-  pure $ [HS.Qualifier $        -- keep the result
+  pure [HS.Qualifier $        -- keep the result
           if null locals && not hasForeigns
           then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
                    maybeWrapThis = if null fields then id else (\ e -> maybeLift [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
@@ -918,7 +918,7 @@ tStm (ABS.AnnStm _ (ABS.SExp (ABS.ExpP pexp))) = do
   (locals, fields,hasForeigns) <- depends pexp
   let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
       maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
-  pure $ [HS.Generator noLoc HS.PWildCard $ -- throw away the result
+  pure [HS.Generator noLoc HS.PWildCard $ -- throw away the result
           if null locals && not hasForeigns
           then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
                    maybeWrapThis = if null fields then id else (\ e -> maybeLift [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
@@ -933,7 +933,7 @@ tStm (ABS.AnnStm _ (ABS.SExp (ABS.ExpP pexp))) = do
 tStm (ABS.AnnStm _ (ABS.SDec t i@(ABS.L (p,n)))) = do
   _ <- addToScope t i
   let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
-  pure $ [HS.Generator noLoc 
+  pure [HS.Generator noLoc 
           (HS.PatTypeSig noLoc (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) $
           case t of
             -- it is an unitialized future (set to newEmptyMVar)
@@ -1039,7 +1039,7 @@ tStm (ABS.AnnStm _ (ABS.SWhile pexp stmBody)) = do
   [HS.Qualifier tbody] <- tStm $ case stmBody of
                                   ABS.AnnStm _ (ABS.SBlock _) -> stmBody
                                   singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm]) -- if single statement, wrap it in a new DO-scope
-  pure $ [HS.Qualifier $ if ?isInit
+  pure [HS.Qualifier $ if ?isInit
                          then [hs| while' $(maybeWrapThis texp) $tbody |] 
                          else [hs| while $(maybeWrapThis texp) $tbody |] ]
 
@@ -1177,15 +1177,56 @@ tStm (ABS.AnnStm _ (ABS.SThrow pexp)) = do
   scopeLevels <- get
   let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
       maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
+      maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
   if null locals && not hasForeigns
     then do
       let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
-      pure $ [HS.Qualifier $ maybeWrapThis [hs| throw $texp |] ]
+      pure [HS.Qualifier $ maybeWrapThis [hs| throw $texp |] ]
     else do
       let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
-      pure $ [HS.Qualifier [hs| throw =<< $(maybeWrapThis texp) |] ]
+      pure [HS.Qualifier $ maybeLift [hs| throw =<< $(maybeWrapThis texp) |] ]
 
-tStm (ABS.AnnStm _ (ABS.STryCatchFinally try_stm cbranches mfinally)) = todo undefined
+tStm (ABS.AnnStm _ (ABS.STryCatchFinally tryStm branches mfinally)) = do
+                                   
+  ttry <- (\case 
+             [] -> [hs| I'.pure () |]
+             [HS.Qualifier tblock'] -> tblock') 
+          <$> tStm (case tryStm of
+                      block@(ABS.AnnStm _ (ABS.SBlock _)) -> block
+                      stm -> ABS.AnnStm [] $ ABS.SBlock [stm]) -- if single statement, wrap it in a new DO-scope
+  
+  tbranches <- mapM (\ (ABS.SCaseBranch pat branchStm) -> do
+                      tbstm <- (\case 
+                                [] -> [hs| I'.pure () |]
+                                [HS.Qualifier tblock'] -> tblock') 
+                              <$> tStm (case branchStm of
+                                          block@(ABS.AnnStm _ (ABS.SBlock _)) -> block
+                                          stm -> ABS.AnnStm [] (ABS.SBlock [stm])) -- if single statement, wrap it in a new DO-scope
+                      pure $ HS.App [hs|Handler'|] $ case pat of
+                                -- a catch-all is a wrapped someexception
+                                ABS.PWildCard -> [hs| \ (I'.SomeException _) -> Just ($tbstm)|]
+                                _ -> HS.LCase [
+                                        -- wrap the normal returned expression in a just
+                                        HS.Alt noLoc (tPattern pat) (HS.UnGuardedRhs [hs|Just ($tbstm)|]) Nothing
+                                        -- pattern match fail, return nothing
+                                      , HS.Alt noLoc HS.PWildCard (HS.UnGuardedRhs [hs|Nothing|]) Nothing]                                  
+                    ) branches
+
+  tfin <- case mfinally of
+            ABS.NoFinally -> pure id
+            ABS.JustFinally finStm -> do
+                         tblock <- (\case 
+                                      [] -> [hs| I'.pure () |]
+                                      [HS.Qualifier tblock'] -> tblock') 
+                                   <$> tStm (case finStm of
+                                              block@(ABS.AnnStm _ (ABS.SBlock _)) -> block
+                                              stm -> ABS.AnnStm [] $ ABS.SBlock [stm]) -- if single statement, wrap it in a new DO-scope
+                         pure $ \ try_catch -> [hs| ($try_catch) `finally` $tblock |]
+  
+  pure [HS.Qualifier $
+        -- (optionally) wrap the try-catch in a finally block
+        tfin $ [hs| $ttry `catch` $(HS.List tbranches)|] ]
+
 
 
 -- (EFFECTFUL) EXPRESSIONS in statement world

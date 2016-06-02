@@ -29,6 +29,7 @@ tModul (ABS.Module modulQTyp exports imports decls maybeMain) allSymbolTables =
                                 , HS.Ident "FlexibleContexts" -- for some type inference of methods
                                 , HS.Ident "PartialTypeSignatures" -- for inferring Eq,Ord contexts. Requires GHC>=7.10
                                 , HS.Ident "DeriveDataTypeable" -- for defining ABS exceptions (exceptions are dynamically typed in haskell)
+                                , HS.Ident "LambdaCase" -- easier codegen for exceptions extension
                                 ]
        -- -fwarn-missing-methods:  for making error the missing ABS class methods
        -- -fno-ignore-asserts:  for not ignoring asserts (which is the default in Haskell)
@@ -97,6 +98,7 @@ tModul (ABS.Module modulQTyp exports imports decls maybeMain) allSymbolTables =
         , HS.ImportDecl { HS.importModule = HS.ModuleName "Prelude" 
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
+                        -- Ord and Show have to be IThingAll, so we can define custom instances
                         , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "IO", HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "putStrLn", HS.IVar $ HS.Ident "error", HS.IVar $ HS.Ident "negate", HS.IVar $ HS.Ident "fromIntegral"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
@@ -104,6 +106,18 @@ tModul (ABS.Module modulQTyp exports imports decls maybeMain) allSymbolTables =
                         , HS.importQualified = True
                         , HS.importAs = Just (HS.ModuleName "I'")
                         , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "unsafeCoerce"])
+                        , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                        }
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Typeable" 
+                        , HS.importQualified = True
+                        , HS.importAs = Just (HS.ModuleName "I'")
+                        , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Typeable"])
+                        , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                        }
+        , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad.Catch" 
+                        , HS.importQualified = True
+                        , HS.importAs = Just (HS.ModuleName "I'")
+                        , HS.importSpecs = Just (False,[HS.IThingAll $ HS.Ident "SomeException"])
                         , HS.importLoc = noLoc, HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                         }
         ]

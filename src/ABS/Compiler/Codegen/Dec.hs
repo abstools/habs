@@ -251,6 +251,25 @@ tDecl (ABS.DDataPoly (ABS.U (_,tid)) tyvars constrs) =  HS.DataDecl noLoc HS.Dat
       typOfConstrType (ABS.RecordConstrType typ _) = typ
 
          
+-- Exception datatypes
+tDecl (ABS.DException constr) =
+  -- 1) a data MyException = MyException(args)
+  [ HS.DataDecl noLoc HS.DataType [] (HS.Ident cid) [] 
+    -- one sole constructor with the same name as the exception name
+    [HS.QualConDecl noLoc [] [] 
+      (HS.ConDecl (HS.Ident cid)
+        (map (HS.TyBang HS.BangedTy . tType . typOfConstrType) cargs))]
+    -- two deriving for exception datatypes (TODO: Eq for ABS)
+    (map (\ n -> (HS.Qual (HS.ModuleName "I'") (HS.Ident n), [])) ["Show","Typeable"])
+  -- 2) a instance Exception MyException
+  , HS.InstDecl noLoc Nothing [] [] (HS.UnQual $ HS.Ident $ "Exception") [HS.TyCon $ HS.UnQual $ HS.Ident cid] [] ]
+  -- TODO: allow or disallow record-accessor functions for exception, because it requires type-safe casting
+  where ((_,cid), cargs) = case constr of
+                            ABS.SinglConstrIdent (ABS.U tid) -> (tid, [])
+                            ABS.ParamConstrIdent (ABS.U tid) args -> (tid, args)                                       
+        typOfConstrType (ABS.EmptyConstrType typ) = typ
+        typOfConstrType (ABS.RecordConstrType typ _) = typ
+
 
 -- Interfaces
 tDecl (ABS.DExtends (ABS.U (_,tname)) extends ms) = HS.ClassDecl noLoc 

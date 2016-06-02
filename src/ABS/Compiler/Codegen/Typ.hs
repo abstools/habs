@@ -16,6 +16,7 @@ import Control.Exception (assert)
 tTypeOrTyVar :: [ABS.U]     -- ^ tyvars in scope
              -> ABS.T         -- ^ abs type
              -> HS.Type
+tTypeOrTyVar _ (ABS.TSimple (ABS.U_ (ABS.U (_, "Exception")))) = HS.TyCon $ HS.Qual (HS.ModuleName "I'") (HS.Ident "SomeException")
 tTypeOrTyVar tyvars (ABS.TSimple qtyp)  = 
        let (q, cname) = splitQU qtyp    
        in if ABS.U (undefined, cname) `elem` tyvars -- type variable

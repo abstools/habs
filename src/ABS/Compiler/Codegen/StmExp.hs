@@ -154,7 +154,15 @@ tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Unit"))))     = pure [hs| I'.pure (
 tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Nil"))))      = pure [hs| I'.pure [] |]
 tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptyMap")))) = pure [hs| I'.pure _emptyMap |]
 tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptySet")))) = pure [hs| I'.pure _emptySet |]
-tStmExp (ABS.ESinglConstr qu) = pure [hs| I'.pure $(HS.Con $ HS.UnQual $ HS.Ident $ showQU qu) |]
+tStmExp (ABS.ESinglConstr qu) = pure [hs| I'.pure $(maybeUpException $ HS.Con $ HS.UnQual $ HS.Ident $ showQU qu) |]
+  where (modul,ident) = splitQU qu
+        maybeUpException = if null modul
+                           then case find (\ (SN ident' modul',_) -> ident == ident' && maybe True (not . snd) modul') (M.assocs ?st) of
+                                  Just (_,SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  _ -> id
+                           else case M.lookup (SN ident (Just (modul, True))) ?st of
+                                  Just (SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  _ -> id
 
 tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Triple"))) pexps) =   
     if length pexps == 3
@@ -183,12 +191,20 @@ tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"InsertAssoc"))) [l, r]) = do
   tr <- tStmExp r
   pure $ [hs| (insertAssoc <$!> $tl <*> $tr) |]
 tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"InsertAssoc"))) _) = errorPos p "wrong number of arguments to InsertAssoc"
-tStmExp (ABS.EParamConstr qu args) = HS.Paren <$>
+tStmExp (ABS.EParamConstr qu args) = maybeUpException . HS.Paren <$>
     foldlM
     (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
     [hs| I'.pure $(HS.Con $ HS.UnQual $ HS.Ident $ showQU qu) |]
     args
-
+  where (modul,ident) = splitQU qu
+        maybeUpException = if null modul
+                           then case find (\ (SN ident' modul',_) -> ident == ident' && maybe True (not . snd) modul') (M.assocs ?st) of
+                                  Just (_,SV Exception _) -> HS.Paren . HS.InfixApp [hs|I'.SomeException|] (HS.QConOp $ HS.UnQual $ HS.Symbol "<$!>")
+                                  _ -> id
+                           else case M.lookup (SN ident (Just (modul, True))) ?st of
+                                  Just (SV Exception _) -> HS.Paren . HS.InfixApp [hs|I'.SomeException|] (HS.QConOp $ HS.UnQual $ HS.Symbol "<$!>")
+                                  _ -> id
+                                 
 tStmExp (ABS.EVar var@(ABS.L (p,pid))) = do
      scope <- ask
      pure $ case M.lookup var scope of
@@ -200,7 +216,7 @@ tStmExp (ABS.EVar var@(ABS.L (p,pid))) = do
                                              in maybePureUpcast t [hs| ($fieldFun this'') |]
                                     Nothing-> case find (\ (SN ident' modul,_) -> pid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
                                                Just (_,SV Foreign _) -> HS.Var $ HS.UnQual $ HS.Ident pid
-                                               _ ->  HS.Var $ HS.UnQual $ HS.Ident pid -- errorPos p $ pid ++ " not in scope" --  -- 
+                                               _ ->  [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident pid)|] -- errorPos p $ pid ++ " not in scope" --  -- 
 
 
 tStmExp (ABS.EThis var@(ABS.L (p, field))) = if null ?cname
