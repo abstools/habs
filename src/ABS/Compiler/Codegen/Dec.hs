@@ -22,6 +22,7 @@ tDecl :: (?st :: SymbolTable) => ABS.Decl -> [HS.Decl]
 
 -- Normalizations
 tDecl (ABS.DFun fReturnTyp fid params body) = tDecl (ABS.DFunPoly fReturnTyp fid [] params body) -- normalize to no type variables
+tDecl (ABS.DType tid typ) = tDecl (ABS.DTypePoly tid [] typ) -- type synonym with no type variables
 tDecl (ABS.DData tid constrs) =  tDecl (ABS.DDataPoly tid [] constrs) -- just parametric datatype with empty list of type variables
 tDecl (ABS.DInterf tid ms) = tDecl (ABS.DExtends tid [] ms) 
 tDecl (ABS.DClass tident fdecls maybeBlock mdecls) = tDecl (ABS.DClassParImplements tident [] [] fdecls maybeBlock mdecls)
@@ -209,8 +210,6 @@ tDecl (ABS.DClassParImplements (ABS.U (_,clsName)) cparams impls ldecls mInit rd
           toImplementMethods = concatMap (\ (SV (Interface dmethods extends) _) -> concat $ dmethods : M.elems extends) $
                          M.elems $ M.filterWithKey (\ (SN i _) _ -> i `elem` map (snd . splitQU) impls) ?st
 
--- Type synonyms
-tDecl (ABS.DType (ABS.U (_,tid)) typ) = [HS.TypeDecl noLoc (HS.Ident tid) [] (tType typ)]
 
 -- Type synonyms with variables
 tDecl (ABS.DTypePoly (ABS.U (_,tid)) tyvars typ) = [HS.TypeDecl noLoc (HS.Ident tid) 
