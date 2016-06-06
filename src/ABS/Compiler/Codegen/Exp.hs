@@ -13,7 +13,6 @@ import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
 import qualified Data.Map as M (Map, fromList, insert, member, lookup, union, assocs)
-import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
 import Data.List (find)
@@ -49,7 +48,7 @@ tPureExp (ABS.ECase ofE branches) = do
   HS.Case tof <$>
     mapM (\ (ABS.ECaseBranch pat pexp) -> do
             texp <- tPureExp pexp
-            pure $ HS.Alt noLoc (tPattern pat) (HS.UnGuardedRhs texp) Nothing
+            pure $ HS.Alt noLoc' (tPattern pat) (HS.UnGuardedRhs texp) Nothing
          ) branches
 
 tPureExp (ABS.EFunCall (ABS.L_ (ABS.L (_,cid))) args) = HS.Paren <$> foldlM
@@ -106,9 +105,9 @@ tPureExp (ABS.EEq pvar@(ABS.EThis _) pnull@(ABS.ELit (ABS.LNull))) = tPureExp (A
 --                           then case joinSub t1 t2 of
 --                               Just t ->
 --                                 return $ HS.Paren $ HS.InfixApp
---                                   (HS.ExpTypeSig HS.noLoc tvar1 (tType t))
+--                                   (HS.ExpTypeSig HS.noLoc' tvar1 (tType t))
 --                                   (HS.QVarOp $ HS.UnQual  $ HS.Symbol "==")
---                                   (HS.ExpTypeSig HS.noLoc tvar2 (tType t))
+--                                   (HS.ExpTypeSig HS.noLoc' tvar2 (tType t))
 --                               Nothing -> error ("cannot unify the interface " ++ str1 
 --                                                ++ " at position " ++ showPos p1 ++ " with interface " ++ str2 ++ " at position " ++ showPos p2)
 --                           else return $ HS.Paren $ HS.InfixApp  -- treat them as both datatypes and let haskell figure out if there is a type mismatch

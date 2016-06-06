@@ -1,13 +1,19 @@
+{-# LANGUAGE ImplicitParams #-}
 module ABS.Compiler.Utils 
     ( showQU
     , splitQU
+    , lineQU
     , showQA
     , splitQA
+    , lineQA
     , headToLower
     , errorPos, warnPos, showPos
+    , noLoc', mkLoc, mkLocFromQU, mkLocFromQA
     ) where
 
 import qualified ABS.AST as ABS
+import Language.Haskell.Exts.SrcLoc (SrcLoc (..))
+
 import Data.List (intercalate)
 import Data.Char (toLower)
 import Debug.Trace (trace)
@@ -21,6 +27,9 @@ splitQU (ABS.U_ (ABS.U (_,ident))) = ("", ident)
 splitQU (ABS.QU (ABS.U (_,qualIdent)) rest) = let (qualRest, ident) = splitQU rest
                                           in (qualIdent ++ "." ++ qualRest, ident)
 
+lineQU :: ABS.QU -> Int
+lineQU (ABS.U_ (ABS.U ((l,_),_))) = l
+lineQU (ABS.QU (ABS.U ((l,_),_)) _) = l
 
 showQA :: ABS.QA -> String
 showQA (ABS.UA (ABS.U (_,ident))) = ident
@@ -34,6 +43,11 @@ splitQA (ABS.LA (ABS.L (_,ident))) = ("", ident)
 splitQA (ABS.QA (ABS.U (_,qualIdent)) rest) = let (qualRest, ident) = splitQA rest
                                               in (qualIdent ++ "." ++ qualRest, ident)
 
+
+lineQA :: ABS.QA -> Int
+lineQA (ABS.UA (ABS.U ((l,_),_))) = l
+lineQA (ABS.LA (ABS.L ((l,_),_))) = l
+lineQA (ABS.QA (ABS.U ((l,_),_)) _) = l
 
 -- | Used for turning an ABS type variable (e.g. A,B,DgFx) to HS type variable (a,b,dgFx)
 headToLower :: String -> String
@@ -51,3 +65,17 @@ warnPos  pos msg = trace ("[warning #" ++ showPos pos ++ "]" ++  msg)
 
 showPos :: (Int, Int) -> String
 showPos (row,col) = show row ++ ":" ++ show col
+
+-- | Empty source-location. Use instead of 'noLoc' which has problem when pretty-printing with LINE pragmas enabled.
+noLoc' :: SrcLoc
+noLoc' = SrcLoc "<unknown>.hs" 1 1
+
+mkLocFromQU :: (?absFileName::String) => ABS.QU -> SrcLoc
+mkLocFromQU qu = SrcLoc ?absFileName (lineQU qu) 1
+
+mkLocFromQA :: (?absFileName::String) => ABS.QA -> SrcLoc
+mkLocFromQA qa = SrcLoc ?absFileName (lineQA qa) 1
+
+-- | from BNFC tokens' position
+mkLoc :: (?absFileName::String) => (Int,Int) -> SrcLoc
+mkLoc (line,column) = SrcLoc ?absFileName line column

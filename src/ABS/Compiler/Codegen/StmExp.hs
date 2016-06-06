@@ -15,7 +15,6 @@ import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
 import qualified Data.Map as M (Map, fromList, insert, member, lookup, union, assocs)
-import Language.Haskell.Exts.SrcLoc (noLoc)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
 import Data.List (find)
@@ -28,7 +27,7 @@ tStmExp (ABS.EIf predE thenE elseE) = do
   tpred <- tStmExp predE
   tthen <- tStmExp thenE
   telse <- tStmExp elseE
-  pure $ HS.Do [ HS.Generator noLoc (HS.PVar $ HS.Ident "if'") tpred
+  pure $ HS.Do [ HS.Generator noLoc' (HS.PVar $ HS.Ident "if'") tpred
                , HS.Qualifier [hs| if if' then $tthen else $telse |]
                ]
 
@@ -46,9 +45,9 @@ tStmExp (ABS.ECase ofE branches) = do
   tcase <- HS.Case (HS.Var $ HS.UnQual $ HS.Ident "of'") <$>
           mapM (\ (ABS.ECaseBranch pat pexp) -> do
                   texp <- tStmExp pexp
-                  pure $ HS.Alt noLoc (tPattern pat) (HS.UnGuardedRhs texp) Nothing
+                  pure $ HS.Alt noLoc' (tPattern pat) (HS.UnGuardedRhs texp) Nothing
                ) branches
-  pure $ HS.Do [ HS.Generator noLoc (HS.PVar $ HS.Ident "of'") tof
+  pure $ HS.Do [ HS.Generator noLoc' (HS.PVar $ HS.Ident "of'") tof
                , HS.Qualifier tcase
                ]
 
@@ -117,9 +116,9 @@ tStmExp (ABS.EEq pvar@(ABS.EThis _) pnull@(ABS.ELit (ABS.LNull))) = tStmExp (ABS
 --                           then case joinSub t1 t2 of
 --                               Just t ->
 --                                 return $ HS.Paren $ HS.InfixApp
---                                   (HS.ExpTypeSig HS.noLoc tvar1 (tType t))
+--                                   (HS.ExpTypeSig HS.noLoc' tvar1 (tType t))
 --                                   (HS.QVarOp $ HS.UnQual  $ HS.Symbol "==")
---                                   (HS.ExpTypeSig HS.noLoc tvar2 (tType t))
+--                                   (HS.ExpTypeSig HS.noLoc' tvar2 (tType t))
 --                               Nothing -> error ("cannot unify the interface " ++ str1 
 --                                                ++ " at position " ++ showPos p1 ++ " with interface " ++ str2 ++ " at position " ++ showPos p2)
 --                           else return $ HS.Paren $ HS.InfixApp  -- treat them as both datatypes and let haskell figure out if there is a type mismatch
