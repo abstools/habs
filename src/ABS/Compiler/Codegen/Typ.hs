@@ -25,7 +25,7 @@ tTypeOrTyVar tyvars (ABS.TSimple qtyp)  =
                            then HS.UnQual 
                            else HS.Qual (HS.ModuleName q)) (HS.Ident cname)
 tTypeOrTyVar tyvars (ABS.TPoly qtyp tyargs) = foldl (\ tyacc tynext -> HS.TyApp tyacc (tTypeOrTyVar tyvars tynext)) (tType (ABS.TSimple qtyp)) tyargs
-tTypeOrTyVar tyvars ABS.TInfer = todo undefined
+tTypeOrTyVar _tyvars ABS.TInfer = todo undefined
 
 tType :: ABS.T -> HS.Type
 tType = tTypeOrTyVar []

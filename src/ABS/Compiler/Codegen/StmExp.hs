@@ -13,8 +13,8 @@ import ABS.Compiler.Codegen.Pat
 import ABS.Compiler.Firstpass.Base
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
-import Control.Monad.Trans.Reader (runReader, local, ask)
-import qualified Data.Map as M (Map, fromList, insert, member, lookup, union, assocs)
+import Control.Monad.Trans.Reader (local, ask)
+import qualified Data.Map as M (Map, insert, lookup, union, assocs)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
 import Data.List (find)
@@ -64,19 +64,11 @@ tStmExp (ABS.EFunCall (ABS.L_ (ABS.L (_,cid))) args) =  case find (\ (SN ident' 
                                                            (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
                                                            [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident cid) |]
                                                            args
---tStmExp (ABS.EQualFunCall ttyp (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
---                                                             (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs| $acc <*> $targ |])
---                                                             [hs| I'.pure $(HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid) |]
---                                                             args
 
-tStmExp (ABS.ENaryFunCall (ABS.L_ (ABS.L (_,cid))) args) = do
+tStmExp (ABS.ENaryFunCall ql args) = do
     targs <- HS.List <$> mapM tStmExp args
-    pure [hs| ($(HS.Var $ HS.UnQual $ HS.Ident cid) <$!> (I'.sequence $targs)) |]
+    pure [hs| ($(HS.Var $ HS.UnQual $ HS.Ident $ showQL ql) <$!> (I'.sequence $targs)) |]
 
-
---tStmExp (ABS.ENaryQualFunCall ttyp (ABS.LIdent (_,cid)) args) = do
---    targs <- HS.List <$> mapM tStmExp args
---    pure [hs| ($(HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid) <$> (I'.sequence $targs)) |]
 
 -- constants
 tStmExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LNull)) = pure [hs| I'.pure True |]
@@ -84,7 +76,7 @@ tStmExp (ABS.EEq (ABS.ELit ABS.LThis) (ABS.ELit ABS.LThis)) = pure [hs| I'.pure 
 tStmExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LThis)) = pure [hs| I'.pure False |]
 
 -- optimization, to wrap null with the direct interface of rhs instead of up'
-tStmExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.L (p,str)))) = do
+tStmExp (ABS.EEq (ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.L (p,str)))) = do
    scope <- ask
    tvar <- tStmExp pvar
    pure $ case M.lookup ident (scope `M.union` ?vars `M.union` ?fields) of -- check the type of the right var
@@ -92,18 +84,17 @@ tStmExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.L (p,str))
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " variable not in scope or has foreign type"
 -- commutative
-tStmExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit (ABS.LNull))) = tStmExp (ABS.EEq pnull pvar)
+tStmExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit ABS.LNull)) = tStmExp (ABS.EEq pnull pvar)
 
 -- optimization, to wrap null with the direct interface of rhs instead of up'
-tStmExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EThis ident@(ABS.L (p,str)))) = do
-   scope <- ask
+tStmExp (ABS.EEq (ABS.ELit ABS.LNull) pvar@(ABS.EThis ident@(ABS.L (p,str)))) = do
    tvar <- tStmExp pvar
    pure $ case M.lookup ident ?fields of -- check the type of the right var
             Just (ABS.TSimple qu) -> [hs| ((==) ($(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null) <$!> $tvar) |]
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " not in scope"
 -- commutative
-tStmExp (ABS.EEq pvar@(ABS.EThis _) pnull@(ABS.ELit (ABS.LNull))) = tStmExp (ABS.EEq pnull pvar)
+tStmExp (ABS.EEq pvar@(ABS.EThis _) pnull@(ABS.ELit ABS.LNull)) = tStmExp (ABS.EEq pnull pvar)
 
 
 -- tStmExp (ABS.EEq pvar1@(ABS.EVar ident1@(ABS.LIdent (p1,str1))) pvar2@(ABS.EVar ident2@(ABS.LIdent (p2,str2)))) _tyvars = do

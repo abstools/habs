@@ -83,6 +83,7 @@ tAss _ (ABS.TSimple qu) (ABS.L (_,n)) (ABS.ExpE (ABS.New qcname args)) = do
                                                [hs| I'.pure $smartCon |]
                                                args) formalParams
               in maybeLift [hs| (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< (new $initFun =<< $(maybeWrapThis smartApplied)) |] ]
+tAss _ (ABS.TPoly _ _) (ABS.L (p,_)) (ABS.ExpE (ABS.New _ _)) = errorPos p "Interface cannot have polymorphic type"
 
 tAss _ (ABS.TSimple qu) (ABS.L (_,n)) (ABS.ExpE (ABS.NewLocal qcname args)) = do
   scopeLevels <- get
@@ -105,6 +106,7 @@ tAss _ (ABS.TSimple qu) (ABS.L (_,n)) (ABS.ExpE (ABS.NewLocal qcname args)) = do
                                                [hs| I'.pure $smartCon |]
                                                args) formalParams
               in maybeLift [hs| (I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< (newlocal' this $initFun =<< $(maybeWrapThis smartApplied)) |] ]
+tAss _ (ABS.TPoly _ _) (ABS.L (p,_)) (ABS.ExpE (ABS.NewLocal _ _)) = errorPos p "Interface cannot have polymorphic type"
 
 tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
   case pexp of
@@ -139,11 +141,11 @@ tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) ar
       Nothing -> if ident `M.member` ?fields
                 then tAss a typ i (ABS.ExpE (ABS.SyncMethCall (ABS.EThis ident) (ABS.L (p,mname)) args)) -- rewrite it to this.var
                 else errorPos p "cannot find variable"
-   ABS.EThis ident@(ABS.L (p,calleeVar)) ->
+   ABS.EThis ident@(ABS.L (_,calleeVar)) ->
      case M.lookup ident ?fields of
       Just (ABS.TSimple qu) -> do -- only interface type
           scopeLevels <- get
-          (locals,fields,hasForeigns) <- unzip3 <$> mapM depends args
+          (locals,_fields,hasForeigns) <- unzip3 <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               (prefix, iident) = splitQU qu
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
@@ -224,11 +226,11 @@ tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) a
                 then tAss a typ i (ABS.ExpE (ABS.AsyncMethCall (ABS.EThis ident) (ABS.L (p,mname)) args)) -- rewrite it to this.var
                 else errorPos p "cannot find variable"
       _ -> errorPos p "invalid object callee type"
-  ABS.EThis ident@(ABS.L (p,calleeVar)) ->
+  ABS.EThis ident@(ABS.L (_,calleeVar)) ->
     case M.lookup ident ?fields of
       Just (ABS.TSimple qu) -> do -- only interface type
           scopeLevels <- get
-          (locals,fields,hasForeigns) <- unzip3 <$> mapM depends args
+          (locals,_fields,hasForeigns) <- unzip3 <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               (prefix, iident) = splitQU qu
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
@@ -305,6 +307,14 @@ tAss _ _ (ABS.L (_,n)) (ABS.ExpE ABS.ProNew) = do
   let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
   pure [HS.Qualifier $ maybeLift [hs| I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< pro_new |] ]
 
+tAss _ _ (ABS.L (_,n)) (ABS.ExpE ABS.Now) = do
+  let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
+  pure [HS.Qualifier $ maybeLift [hs| I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< now |] ]
+
+tAss _ _ (ABS.L (_,n)) (ABS.ExpE ABS.Readln) = do
+  let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
+  pure [HS.Qualifier $ maybeLift [hs| I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< readln |] ]
+
 
 ------------- DECLARATION+LOCAL VARIABLE ASSIGNMENT
 
@@ -345,6 +355,7 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t@(ABS.TSimple qu) i@(ABS.L (p,n)) (ABS.ExpE (AB
                                                [hs| I'.pure $smartCon |]
                                                args) formalParams
               in maybeLift [hs| (I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< (new $initFun =<< $(maybeWrapThis smartApplied)) |] ]
+tStm (ABS.AnnStm _ (ABS.SDecAss (ABS.TPoly _ _) (ABS.L (p,_)) (ABS.ExpE (ABS.New _ _)))) = errorPos p "Interface cannot have polymorphic type"
 
 tStm (ABS.AnnStm _ (ABS.SDecAss t@(ABS.TSimple qu) i@(ABS.L (p,n)) (ABS.ExpE (ABS.NewLocal qcname args)))) = do
   scopeLevels <- addToScope t i
@@ -368,6 +379,7 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t@(ABS.TSimple qu) i@(ABS.L (p,n)) (ABS.ExpE (AB
                                                [hs| I'.pure $smartCon |]
                                                args) formalParams
               in maybeLift [hs| (I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< (newlocal' this $initFun =<< $(maybeWrapThis smartApplied)) |] ]
+tStm (ABS.AnnStm _ (ABS.SDecAss (ABS.TPoly _ _) (ABS.L (p,_)) (ABS.ExpE (ABS.NewLocal _ _)))) = errorPos p "Interface cannot have polymorphic type"
 
 
 tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.L (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)))) =
@@ -405,11 +417,11 @@ tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.L (_,n)) (ABS.ExpE (ABS.SyncMethCall pe
       Nothing -> if ident `M.member` ?fields
                 then tStm (ABS.AnnStm a (ABS.SDecAss t i (ABS.ExpE (ABS.AsyncMethCall (ABS.EThis ident) (ABS.L (p,mname)) args)))) -- rewrite it to this.var
                 else errorPos p "cannot find variable"
-   ABS.EThis ident@(ABS.L (p,calleeVar)) ->
+   ABS.EThis ident@(ABS.L (_,calleeVar)) ->
      case M.lookup ident ?fields of
       Just (ABS.TSimple qu) -> do -- only interface type
           scopeLevels <- addToScope t i
-          (locals,fields,hasForeigns) <- unzip3 <$> mapM depends args
+          (locals,_fields,hasForeigns) <- unzip3 <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               (prefix, iident) = splitQU qu
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
@@ -494,11 +506,11 @@ tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.L (_,n)) (ABS.ExpE (ABS.AsyncMethCall p
                 then tStm (ABS.AnnStm a (ABS.SDecAss t i (ABS.ExpE (ABS.AsyncMethCall (ABS.EThis ident) (ABS.L (p,mname)) args)))) -- rewrite it to this.var
                 else errorPos p "cannot find variable"
       _ -> errorPos p "invalid object callee type"
-  ABS.EThis ident@(ABS.L (p,calleeVar)) ->
+  ABS.EThis ident@(ABS.L (_,calleeVar)) ->
     case M.lookup ident ?fields of
       Just (ABS.TSimple qu) -> do -- only interface type
           scopeLevels <- addToScope t i
-          (locals,fields,hasForeigns) <- unzip3 <$> mapM depends args
+          (locals,_fields,hasForeigns) <- unzip3 <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               (prefix, iident) = splitQU qu
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
@@ -582,6 +594,20 @@ tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.L (p,n)) (ABS.ExpE ABS.ProNew))) = do
   pure [HS.Generator (mkLoc p)
         (HS.PatTypeSig noLoc' (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) $ 
         maybeLift [hs| I'.newIORef =<< pro_new |] ]
+
+tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.L (p,n)) (ABS.ExpE ABS.Now))) = do
+  _ <- addToScope t i
+  let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
+  pure [HS.Generator (mkLoc p)
+        (HS.PatTypeSig noLoc' (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) $ 
+        maybeLift [hs| I'.newIORef =<< now |] ]
+
+tStm (ABS.AnnStm _ (ABS.SDecAss t i@(ABS.L (p,n)) (ABS.ExpE ABS.Readln))) = do
+  _ <- addToScope t i
+  let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
+  pure [HS.Generator (mkLoc p)
+        (HS.PatTypeSig noLoc' (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) $ 
+        maybeLift [hs| I'.newIORef =<< readln |] ]
 
 
 --- DISPATCHER: LOCAL-VARIABLE OR FIELD ASSIGMENT
@@ -711,11 +737,11 @@ tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.L (_,field)) (ABS.ExpE (ABS.SyncMethCal
       Nothing -> if ident `M.member` ?fields
                 then tStm (ABS.AnnStm a (ABS.SFieldAss i (ABS.ExpE (ABS.SyncMethCall (ABS.EThis ident) (ABS.L (p,mname)) args)))) -- rewrite it to this.var
                 else errorPos p "cannot find variable"
-   ABS.EThis ident@(ABS.L (p,calleeVar)) ->
+   ABS.EThis ident@(ABS.L (_,calleeVar)) ->
      case M.lookup ident ?fields of
       Just (ABS.TSimple qtyp) -> do -- only interface type
           scopeLevels <- get
-          (locals,fields,hasForeigns) <- unzip3 <$> mapM depends args
+          (locals,_fields,hasForeigns) <- unzip3 <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               (prefix, iident) = splitQU qtyp
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
@@ -811,11 +837,11 @@ tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.L (_,field)) (ABS.ExpE (ABS.AsyncMethCa
                 then tStm (ABS.AnnStm a (ABS.SFieldAss i (ABS.ExpE (ABS.AsyncMethCall (ABS.EThis ident) (ABS.L (p,mname)) args))))
                 else errorPos p "cannot find variable"
       _ -> errorPos p "invalid object callee type"
-  ABS.EThis ident@(ABS.L (p,calleeVar)) ->
+  ABS.EThis ident@(ABS.L (_,calleeVar)) ->
     case M.lookup ident ?fields of
       Just (ABS.TSimple qtyp) -> do -- only interface type
           scopeLevels <- get
-          (locals,fields,hasForeigns) <- unzip3 <$> mapM depends args
+          (locals,_fields,hasForeigns) <- unzip3 <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               (prefix, iident) = splitQU qtyp
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
@@ -882,7 +908,7 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.L (_,field)) (ABS.ExpE (ABS.Get pexp)))) 
 
 tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.L (_,field)) (ABS.ExpE (ABS.ProTry pexp)))) = do
     scopeLevels <- get
-    (locals,fields,hasForeigns) <- depends pexp
+    (locals,__fields,hasForeigns) <- depends pexp
     let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
         maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
     pure [HS.Qualifier $
@@ -899,6 +925,18 @@ tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.L (_,field)) (ABS.ExpE ABS.ProNew))) = do
         recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
     pure [HS.Qualifier $
             maybeLift [hs| I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $recordUpdate) <$!> pro_new) =<< I'.readIORef this') |]]
+
+tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.L (_,field)) (ABS.ExpE ABS.Now))) = do
+    let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
+        recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
+    pure [HS.Qualifier $
+            maybeLift [hs| I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $recordUpdate) <$!> now) =<< I'.readIORef this') |]]
+
+tStm (ABS.AnnStm _ (ABS.SFieldAss (ABS.L (_,field)) (ABS.ExpE ABS.Readln))) = do
+    let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
+        recordUpdate = HS.RecUpdate [hs| this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs| v' |]]
+    pure [HS.Qualifier $
+            maybeLift [hs| I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $recordUpdate) <$!> readln) =<< I'.readIORef this') |]]
           
 
 ------------------------- RETURN , STANDALONE EXPRESSION
@@ -965,8 +1003,8 @@ tStm (ABS.AnnStm _ (ABS.SDec t i@(ABS.L (p,n)))) = do
 
 tStm (ABS.AnnStm _ ABS.SSuspend) = pure [HS.Qualifier [hs| suspend this |]]
 
-tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
-  let (futureGuards, boolGuards) = splitGuard g
+tStm (ABS.AnnStm _ (ABS.SAwait ag)) = do
+  let (futureGuards, boolGuards) = splitGuard ag
   tfguards <- mapM tGuard futureGuards   -- sequentialize: await f1guard? ; await f2guard?;
   tbguards <- if null boolGuards
              then pure []                           
@@ -979,6 +1017,7 @@ tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
     splitGuard' g (fs,as)= case g of
                              ABS.GFutField _ -> (g:fs,as)
                              ABS.GFut _ -> (g:fs,as)
+                             ABS.GDuration _ _ -> (g:fs, as)
                              ABS.GExp _ -> (fs,g:as)
                              ABS.GAnd gl gr -> let 
                                                    (fsl,asl) = splitGuard gl
@@ -994,6 +1033,20 @@ tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
              then pure [HS.Qualifier [hs| awaitFuture' this =<< I'.lift (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident fname)) |]]
              else tGuard (ABS.GFutField var) -- try as field-future
 
+    tGuard (ABS.GDuration pexp1 pexp2) = do
+      scopeLevels <- get                                 
+      (locals,fields,hasForeigns) <- depends (ABS.EAnd pexp1 pexp2)
+      let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+          maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
+      pure [HS.Qualifier $ maybeWrapThis $
+         if null locals && not hasForeigns
+         then let texp1 = runReader (let ?tyvars = [] in tPureExp pexp1) formalParams
+                  texp2 = runReader (let ?tyvars = [] in tPureExp pexp2) formalParams
+              in [hs| awaitDuration' this $texp1 $texp2 |]
+         else let texp1 = runReader (let ?vars = localVars in tStmExp pexp1) formalParams
+                  texp2 = runReader (let ?vars = localVars in tStmExp pexp2) formalParams
+              in [hs| (\ e1' -> awaitDuration' this e1' =<< $texp2) =<< $texp1 |] ]
+
     -- currently, no solution to the cosimo problem
     tGuard (ABS.GFutField (ABS.L (_, fname))) = do
       let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ fname ++ "'" ++ ?cname
@@ -1002,7 +1055,7 @@ tStm (ABS.AnnStm _ (ABS.SAwait g)) = do
     tGuard (ABS.GExp pexp) = do
       (locals, fields,hasForeigns) <- depends pexp
       scopeLevels <- get
-      let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+      let (formalParams, _localVars) = (last scopeLevels, M.unions $ init scopeLevels)
       if null fields
         then error "You are not checking for anything observable in AWAIT"
         else pure [HS.Qualifier $
@@ -1023,14 +1076,14 @@ tStm (ABS.AnnStm _ (ABS.SGive pexp1 pexp2)) = do
   let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
       maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
       maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
-  pure [HS.Qualifier $
+  pure [HS.Qualifier $ maybeLift $ maybeWrapThis $
          if null locals && not hasForeigns
          then let texp1 = runReader (let ?tyvars = [] in tPureExp pexp1) formalParams
                   texp2 = runReader (let ?tyvars = [] in tPureExp pexp2) formalParams
-              in maybeLift $ maybeWrapThis [hs| pro_give $texp1 $texp2 |]
+              in [hs| pro_give $texp1 $texp2 |]
          else let texp1 = runReader (let ?vars = localVars in tStmExp pexp1) formalParams
                   texp2 = runReader (let ?vars = localVars in tStmExp pexp2) formalParams
-              in maybeLift $ maybeWrapThis [hs| (\ e1' -> pro_give e1' =<< $texp2) =<< $texp1 |] ]
+              in [hs| (\ e1' -> pro_give e1' =<< $texp2) =<< $texp1 |] ]
 
 
 -- CONTROL FLOW STATEMENTS
@@ -1158,9 +1211,40 @@ tStm (ABS.AnnStm _ (ABS.SPrint pexp)) = do
   pure [HS.Qualifier $ 
     if null locals && not hasForeigns
     then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
-         in maybeLift $ maybeWrapThis [hs| I'.putStrLn $texp |]
+         in maybeLift $ maybeWrapThis [hs| print $texp |]
     else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
-         in maybeLift [hs| I'.putStrLn =<< $(maybeWrapThis texp) |] ]
+         in maybeLift [hs| print =<< $(maybeWrapThis texp) |] ]
+
+
+tStm (ABS.AnnStm _ (ABS.SPrintln pexp)) = do
+  (locals, fields,hasForeigns) <- depends pexp
+  scopeLevels <- get
+  let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+      maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
+      maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])              
+  pure [HS.Qualifier $ 
+    if null locals && not hasForeigns
+    then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+         in maybeLift $ maybeWrapThis [hs| println $texp |]
+    else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+         in maybeLift [hs| println =<< $(maybeWrapThis texp) |] ]
+
+
+tStm (ABS.AnnStm _ (ABS.SDuration pexp1 pexp2)) = do
+  scopeLevels <- get
+  (locals,fields,hasForeigns) <- depends (ABS.EAnd pexp1 pexp2)
+  let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
+      maybeWrapThis = if null fields then id else (\ e -> [hs| (\ this'' -> $e) =<< I'.readIORef this'|])
+      maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
+  pure [HS.Qualifier $ maybeLift $ maybeWrapThis $
+         if null locals && not hasForeigns
+         then let texp1 = runReader (let ?tyvars = [] in tPureExp pexp1) formalParams
+                  texp2 = runReader (let ?tyvars = [] in tPureExp pexp2) formalParams
+              in [hs| duration $texp1 $texp2 |]
+         else let texp1 = runReader (let ?vars = localVars in tStmExp pexp1) formalParams
+                  texp2 = runReader (let ?vars = localVars in tStmExp pexp2) formalParams
+              in [hs| (\ e1' -> duration e1' =<< $texp2) =<< $texp1 |] ]
+
 
 -- EXCEPTION STATEMENTS
 -------------------------
@@ -1321,11 +1405,11 @@ tEffExp (ABS.SyncMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
       Nothing -> if ident `M.member` ?fields
                 then tEffExp (ABS.SyncMethCall (ABS.EThis ident) (ABS.L (p,mname)) args) _isAlone -- rewrite it to this.var
                 else errorPos p "cannot find variable"
-  ABS.EThis ident@(ABS.L (p,calleeVar)) ->
+  ABS.EThis ident@(ABS.L (_,calleeVar)) ->
     case M.lookup ident ?fields of
       Just (ABS.TSimple qtyp) -> do -- only interface type
           scopeLevels <- get
-          (locals,fields,hasForeigns) <- unzip3 <$> mapM depends args
+          (locals,_fields,hasForeigns) <- unzip3 <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               (prefix, iident) = splitQU qtyp
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
@@ -1404,11 +1488,11 @@ tEffExp (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
       Nothing -> if ident `M.member` ?fields
                 then tEffExp (ABS.AsyncMethCall (ABS.EThis ident) (ABS.L (p,mname)) args) isAlone -- rewrite it to this.var
                 else errorPos p "cannot find variable"
-  ABS.EThis ident@(ABS.L (p,calleeVar)) ->
+  ABS.EThis ident@(ABS.L (_,calleeVar)) ->
     case M.lookup ident ?fields of
       Just (ABS.TSimple qtyp) -> do -- only interface type
           scopeLevels <- get
-          (locals,fields,hasForeigns) <- unzip3 <$> mapM depends args
+          (locals,_fields,hasForeigns) <- unzip3 <$> mapM depends args
           let (formalParams, localVars) = (last scopeLevels, M.unions $ init scopeLevels)
               (prefix, iident) = splitQU qtyp
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
@@ -1486,8 +1570,14 @@ tEffExp (ABS.ProTry pexp) _ = do
                 in maybeLift [hs| pro_try =<< $(maybeWrapThis texp) |]
 
 
-tEffExp ABS.ProNew isAlone = pure $ let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
-                                    in maybeLift [hs| pro_new |]
+tEffExp ABS.ProNew _ = pure $ let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
+                              in maybeLift [hs| pro_new |]
+
+tEffExp ABS.Now _ = pure $ let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
+                              in maybeLift [hs| now |]
+
+tEffExp ABS.Readln _ = pure $ let maybeLift = if ?isInit then id else (\e -> [hs| I'.lift ($e)|])
+                              in maybeLift [hs| readln |]
 
 
 -- HELPERS
@@ -1503,7 +1593,7 @@ addToScope typ var@(ABS.L (p,pid)) = do
            return newScopeLevels
 
 
-depends pexp = runReader (depends' pexp ([],[],False)) . M.unions . init <$> get
+depends e = runReader (depends' e ([],[],False)) . M.unions . init <$> get
     where
  collectPatVars :: ABS.Pattern -> [ABS.L]
  collectPatVars (ABS.PVar ident) = [ident]
@@ -1540,7 +1630,7 @@ depends pexp = runReader (depends' pexp ([],[],False)) . M.unions . init <$> get
                       idents = collectPatVars pat
                   in
                     let ?fields = foldl (flip M.delete) fields' idents
-                    in local (\ scope -> foldl (flip M.delete) scope idents) (depends' pexpBranch ([],[],False))
+                    in local (\ scope' -> foldl (flip M.delete) scope' idents) (depends' pexpBranch ([],[],False))
                   ) branches
 
     ABS.EOr e e' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) [e,e']
@@ -1562,12 +1652,10 @@ depends pexp = runReader (depends' pexp ([],[],False)) . M.unions . init <$> get
               (case find (\ (SN str' modul,_) -> str == str' && maybe False (not . snd) modul) (M.assocs ?st) of
                  Just (_,SV Foreign _) ->  (rlocal, rfields,True)
                  _ -> (rlocal, rfields,hasForeigns)) <$> mapM (\ ex -> depends' ex ([],[],False)) es
-    --ABS.EQualFunCall _ _ es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) es
     ABS.ENaryFunCall (ABS.L_ (ABS.L (_,str))) es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) 
               (case find (\ (SN str' modul,_) -> str == str' && maybe False (not . snd) modul) (M.assocs ?st) of
                  Just (_,SV Foreign _) ->  (rlocal, rfields,True)
                  _ -> (rlocal, rfields,hasForeigns)) <$> mapM (\ ex -> depends' ex ([],[],False)) es
-    --ABS.ENaryQualFunCall _ _ es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields, hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False) ) es
     ABS.EParamConstr qtyp es -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields,hasForeigns) <$> mapM (\ ex -> depends' ex ([],[],False)) es
     ABS.EIf e e' e'' -> foldl (\ (acc1,acc2,acc3) (x1,x2,x3) -> (acc1++x1,acc2++x2,acc3||x3)) (rlocal, rfields,hasForeigns) <$>  mapM (\ ex -> depends' ex ([],[],False)) [e,e',e'']
     _ -> return (rlocal, rfields, hasForeigns)

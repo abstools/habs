@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams #-}
 module ABS.Compiler.Utils 
-    ( showQU
+    ( showQL
+    , showQU
     , splitQU
     , lineQU
     , showQA
@@ -14,9 +15,13 @@ module ABS.Compiler.Utils
 import qualified ABS.AST as ABS
 import Language.Haskell.Exts.SrcLoc (SrcLoc (..))
 
-import Data.List (intercalate)
 import Data.Char (toLower)
 import Debug.Trace (trace)
+
+
+showQL :: ABS.QL -> String
+showQL (ABS.L_ (ABS.L (_,ident))) = ident
+showQL (ABS.QL (ABS.U (_,ident)) rest) = ident ++ "." ++ showQL rest
 
 showQU :: ABS.QU -> String
 showQU (ABS.U_ (ABS.U (_,ident))) = ident
@@ -49,10 +54,12 @@ lineQA (ABS.UA (ABS.U ((l,_),_))) = l
 lineQA (ABS.LA (ABS.L ((l,_),_))) = l
 lineQA (ABS.QA (ABS.U ((l,_),_)) _) = l
 
+
+
 -- | Used for turning an ABS type variable (e.g. A,B,DgFx) to HS type variable (a,b,dgFx)
 headToLower :: String -> String
 headToLower (x:xs) = toLower x : xs
-
+headToLower _ = error "headToLower: emptyList"
 
 -- | Querying a statement AST
 --

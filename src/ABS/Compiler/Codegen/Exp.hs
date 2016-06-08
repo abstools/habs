@@ -12,7 +12,7 @@ import ABS.Compiler.Firstpass.Base
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
-import qualified Data.Map as M (Map, fromList, insert, member, lookup, union, assocs)
+import qualified Data.Map as M (Map, fromList, insert, lookup, union, assocs)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
 import Data.List (find)
@@ -51,22 +51,14 @@ tPureExp (ABS.ECase ofE branches) = do
             pure $ HS.Alt noLoc' (tPattern pat) (HS.UnGuardedRhs texp) Nothing
          ) branches
 
-tPureExp (ABS.EFunCall (ABS.L_ (ABS.L (_,cid))) args) = HS.Paren <$> foldlM
+tPureExp (ABS.EFunCall ql args) = HS.Paren <$> foldlM
                                                     (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
-                                                    (HS.Var $ HS.UnQual $ HS.Ident cid)
+                                                    (HS.Var $ HS.UnQual $ HS.Ident $ showQL ql)
                                                     args
---tPureExp (ABS.EQualFunCall ttyp (ABS.LIdent (_,cid)) args) = HS.Paren <$> foldlM
---                                                             (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
---                                                             (HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid)
---                                                             args
 
-tPureExp (ABS.ENaryFunCall (ABS.L_ (ABS.L (_,cid))) args) = 
-    HS.Paren . HS.App (HS.Var $ HS.UnQual $ HS.Ident cid)
-          <$> HS.List <$> mapM tPureExp args
+tPureExp (ABS.ENaryFunCall ql args) = 
+    HS.Paren . HS.App (HS.Var $ HS.UnQual $ HS.Ident $ showQL ql) . HS.List <$> mapM tPureExp args
 
---tPureExp (ABS.ENaryQualFunCall ttyp (ABS.LIdent (_,cid)) args) = do
---    HS.Paren . HS.App (HS.Var $ HS.Qual (HS.ModuleName $ showTType ttyp) $ HS.Ident cid)
---          <$> HS.List <$> mapM tPureExp args
 
 -- constants
 tPureExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LNull)) = pure [hs| True |]
@@ -74,7 +66,7 @@ tPureExp (ABS.EEq (ABS.ELit ABS.LThis) (ABS.ELit ABS.LThis)) = pure [hs| True |]
 tPureExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LThis)) = pure [hs| False |]
 
 -- optimization, to wrap null with the direct interface of rhs instead of up'
-tPureExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.L (p,str)))) = do
+tPureExp (ABS.EEq (ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.L (p,str)))) = do
    scope <- ask
    tvar <- tPureExp pvar
    pure $ case M.lookup ident (scope `M.union` ?fields) of -- check the type of the right var
@@ -82,18 +74,17 @@ tPureExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.L (p,str)
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " variable not in scope or has foreign type"
 -- commutative
-tPureExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit (ABS.LNull))) = tPureExp (ABS.EEq pnull pvar)
+tPureExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit ABS.LNull)) = tPureExp (ABS.EEq pnull pvar)
 
 -- optimization, to wrap null with the direct interface of rhs instead of up'
-tPureExp (ABS.EEq pnull@(ABS.ELit ABS.LNull) pvar@(ABS.EThis ident@(ABS.L (p,str)))) = do
-   scope <- ask
+tPureExp (ABS.EEq (ABS.ELit ABS.LNull) pvar@(ABS.EThis ident@(ABS.L (p,str)))) = do
    tvar <- tPureExp pvar
    pure $ case M.lookup ident ?fields of -- check the type of the right var
             Just (ABS.TSimple qu) -> [hs| ( $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null == $tvar ) |]
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " not in scope"
 -- commutative
-tPureExp (ABS.EEq pvar@(ABS.EThis _) pnull@(ABS.ELit (ABS.LNull))) = tPureExp (ABS.EEq pnull pvar)
+tPureExp (ABS.EEq pvar@(ABS.EThis _) pnull@(ABS.ELit ABS.LNull)) = tPureExp (ABS.EEq pnull pvar)
 
 -- tPureExp (ABS.EEq pvar1@(ABS.EVar ident1@(ABS.LIdent (p1,str1))) pvar2@(ABS.EVar ident2@(ABS.LIdent (p2,str2)))) _tyvars = do
 --   tvar1 <- tPureExp pvar1 _tyvars

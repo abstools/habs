@@ -147,7 +147,7 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
     HS.InstDecl noLoc' Nothing [] [] 
           (HS.UnQual $ HS.Ident $ showQU qtyp ++ "'") -- the interface name
           [HS.TyCon $ HS.UnQual $ HS.Ident $ clsName] -- the class name
-          (fmap (\ mname -> let Just (ABS.MethClassBody typ _ mparams block) = M.lookup mname classMethods
+          (fmap (\ mname -> let Just (ABS.MethClassBody _typ _ mparams block) = M.lookup mname classMethods
                            in HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident mname)
                                                        -- method params
                                                        (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
@@ -159,7 +159,7 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
                           HS.InstDecl noLoc' Nothing [] [] 
                                 (HS.UnQual $ HS.Ident $ n ++ "'") -- the interface name
                                 [HS.TyCon $ HS.UnQual $ HS.Ident $ clsName] -- the class name
-                                (fmap (\ mname -> let Just (ABS.MethClassBody typ _ mparams block) = M.lookup mname classMethods
+                                (fmap (\ mname -> let Just (ABS.MethClassBody _typ _ mparams block) = M.lookup mname classMethods
                                                  in HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident mname) 
                                                                              -- method params
                                                                              (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat| this@(Obj' this' _) |]])
@@ -276,7 +276,7 @@ tDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (mkLoc ipos)
         (HS.Ident $ tname ++ "'") -- name of interface
         [HS.UnkindedVar (HS.Ident "a")] -- all interfaces have kind * -> *
         []
-        (map (tMethSig tname) ms)
+        (map tMethSig ms)
       : -- Existential Wrapper
       HS.DataDecl noLoc' HS.DataType [] (HS.Ident tname) [] [HS.QualConDecl noLoc' [HS.UnkindedVar $ HS.Ident "a"] [HS.ClassA (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyVar (HS.Ident "a")]] (HS.ConDecl (HS.Ident tname) [HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a")])] []
       : -- Show instance for the wrapper
@@ -315,8 +315,8 @@ tDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (mkLoc ipos)
 
     where
     -- method_signature :: args -> Obj a (THIS) -> (res -> ABS ()) -> ABS ()
-    tMethSig :: String -> ABS.MethSig -> HS.ClassDecl
-    tMethSig interName (ABS.MethSig _ retTyp (ABS.L (mpos,mname)) params) = 
+    tMethSig :: ABS.MethSig -> HS.ClassDecl
+    tMethSig (ABS.MethSig _ retTyp (ABS.L (mpos,mname)) params) = 
         if mname == "run" && ((case retTyp of
                               ABS.TSimple (ABS.U_ (ABS.U (_, "Unit"))) -> False
                               _ -> True) || not (null params))
