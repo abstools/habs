@@ -12,36 +12,36 @@ import ABS.Compiler.Firstpass.Base
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
-import qualified Data.Map as M (Map, fromList, insert, lookup, union, assocs)
+import qualified Data.Map as M (fromList, insert, lookup, union, assocs)
 import Language.Haskell.Exts.QQ (hs)
 import Data.Foldable (foldlM)
 import Data.List (find)
 
 -- | Translating the body of a pure function
-tFunBody :: ( ?st::SymbolTable, ?tyvars::[ABS.U], ?fields :: M.Map ABS.L ABS.T, ?cname :: String) => 
-           ABS.FunBody -> [ABS.FormalPar] -> HS.Exp
-tFunBody ABS.BuiltinFunBody _params = [hs| (I'.error "builtin called") |] -- builtin turned to undefined
+tFunBody :: (?st::SymbolTable, ?tyvars::[ABS.U], ?fields::ScopeLVL, ?cname::String)
+         => ABS.FunBody -> [ABS.FormalPar] -> HS.Exp
+tFunBody ABS.BuiltinFunBody _params = [hs|(I'.error "builtin called")|] -- builtin turned to undefined
 tFunBody (ABS.NormalFunBody pexp) params = runReader (tPureExp pexp) 
                                            (M.fromList $ map (\ (ABS.FormalPar t i) -> (i,t)) params) -- initial function scope is the formal params
 
 -- | Translating a pure expression
-tPureExp :: ( ?st::SymbolTable, ?tyvars::[ABS.U], ?fields :: M.Map ABS.L ABS.T, ?cname :: String) => 
-           ABS.PureExp -> ExpScope HS.Exp
+tPureExp :: ( ?st::SymbolTable, ?tyvars::[ABS.U], ?fields::ScopeLVL, ?cname::String) 
+         => ABS.PureExp -> LetScope HS.Exp
 
 tPureExp (ABS.EIf predE thenE elseE) = do
   tpred <- tPureExp predE
   tthen <- tPureExp thenE
   telse <- tPureExp elseE
-  pure [hs| if $tpred then $tthen else $telse |]
+  pure [hs|if $tpred then $tthen else $telse|]
 
 tPureExp (ABS.ELet (ABS.FormalPar ptyp pid@(ABS.L (_,var))) eqE inE) = do
   tin <- local (M.insert pid ptyp) $ tPureExp inE -- adds to scope
   teq <- tPureExp eqE
   let pat = HS.Ident var
   pure $ case ptyp of
-             ABS.TInfer -> [hs| (\ ((pat)) -> $tin) $teq |] -- don't add type-sig, infer it
+             ABS.TInfer -> [hs|(\ ((pat)) -> $tin) $teq|] -- don't add type-sig, infer it
              _ -> let typ = tTypeOrTyVar ?tyvars ptyp
-                 in [hs| (\ ((pat)) -> $tin) ( $teq :: ((typ)) ) |] -- maps to a haskell lambda exp
+                 in [hs|(\ ((pat)) -> $tin) ( $teq :: ((typ)) )|] -- maps to a haskell lambda exp
 
 tPureExp (ABS.ECase ofE branches) = do
   tof <- tPureExp ofE
@@ -61,16 +61,16 @@ tPureExp (ABS.ENaryFunCall ql args) =
 
 
 -- constants
-tPureExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LNull)) = pure [hs| True |]
-tPureExp (ABS.EEq (ABS.ELit ABS.LThis) (ABS.ELit ABS.LThis)) = pure [hs| True |]
-tPureExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LThis)) = pure [hs| False |]
+tPureExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LNull)) = pure [hs|True|]
+tPureExp (ABS.EEq (ABS.ELit ABS.LThis) (ABS.ELit ABS.LThis)) = pure [hs|True|]
+tPureExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LThis)) = pure [hs|False|]
 
 -- optimization, to wrap null with the direct interface of rhs instead of up'
 tPureExp (ABS.EEq (ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.L (p,str)))) = do
    scope <- ask
    tvar <- tPureExp pvar
    pure $ case M.lookup ident (scope `M.union` ?fields) of -- check the type of the right var
-            Just (ABS.TSimple qu) -> [hs| ( $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null == $tvar ) |]
+            Just (ABS.TSimple qu) -> [hs|( $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null == $tvar )|]
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " variable not in scope or has foreign type"
 -- commutative
@@ -80,7 +80,7 @@ tPureExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit ABS.LNull)) = tPureExp (ABS.
 tPureExp (ABS.EEq (ABS.ELit ABS.LNull) pvar@(ABS.EThis ident@(ABS.L (p,str)))) = do
    tvar <- tPureExp pvar
    pure $ case M.lookup ident ?fields of -- check the type of the right var
-            Just (ABS.TSimple qu) -> [hs| ( $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null == $tvar ) |]
+            Just (ABS.TSimple qu) -> [hs|( $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null == $tvar )|]
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " not in scope"
 -- commutative
@@ -109,30 +109,30 @@ tPureExp (ABS.EEq pvar@(ABS.EThis _) pnull@(ABS.ELit ABS.LNull)) = tPureExp (ABS
 --     Nothing -> errorPos p1 $ str1 ++ " not in scope"
 
 -- a catch-all for literals,constructors maybe coupled with vars
-tPureExp (ABS.EEq l r) = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl == $tr) |]
+tPureExp (ABS.EEq l r) = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl == $tr)|]
 
 -- -- normalizess to not . ==
 tPureExp (ABS.ENeq left right) = tPureExp (ABS.ELogNeg $ ABS.EEq left right) 
 
 -- -- be careful to parenthesize infix apps
-tPureExp (ABS.EOr l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl || $tr) |]
-tPureExp (ABS.EAnd l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl && $tr) |]
-tPureExp (ABS.ELt l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl < $tr) |]
-tPureExp (ABS.ELe l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl <= $tr) |]
-tPureExp (ABS.EGt l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl > $tr) |]
-tPureExp (ABS.EGe l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl >= $tr) |]
-tPureExp (ABS.EAdd l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl + $tr) |]
-tPureExp (ABS.ESub l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl - $tr) |]
-tPureExp (ABS.EMul l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl * $tr) |]
-tPureExp (ABS.EDiv l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl / $tr) |]
-tPureExp (ABS.EMod l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs| ($tl % $tr) |]
-tPureExp (ABS.ELogNeg e) = do te <- tPureExp e; pure [hs| (not $te) |]
-tPureExp (ABS.EIntNeg e) = do te <- tPureExp e; pure [hs| (- $te) |]
+tPureExp (ABS.EOr l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl || $tr)|]
+tPureExp (ABS.EAnd l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl && $tr)|]
+tPureExp (ABS.ELt l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl < $tr)|]
+tPureExp (ABS.ELe l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl <= $tr)|]
+tPureExp (ABS.EGt l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl > $tr)|]
+tPureExp (ABS.EGe l r)   = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl >= $tr)|]
+tPureExp (ABS.EAdd l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl + $tr)|]
+tPureExp (ABS.ESub l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl - $tr)|]
+tPureExp (ABS.EMul l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl * $tr)|]
+tPureExp (ABS.EDiv l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl / $tr)|]
+tPureExp (ABS.EMod l r)  = do tl <- tPureExp l;  tr <- tPureExp r; pure [hs|($tl % $tr)|]
+tPureExp (ABS.ELogNeg e) = do te <- tPureExp e; pure [hs|(not $te)|]
+tPureExp (ABS.EIntNeg e) = do te <- tPureExp e; pure [hs|(- $te)|]
 
-tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Unit"))))     = pure [hs| () |]
-tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Nil"))))      = pure [hs| [] |]
-tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptyMap")))) = pure [hs| _emptyMap |]
-tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptySet")))) = pure [hs| _emptySet |]
+tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Unit"))))     = pure [hs|()|]
+tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Nil"))))      = pure [hs|[]|]
+tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptyMap")))) = pure [hs|_emptyMap|]
+tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptySet")))) = pure [hs|_emptySet|]
 tPureExp (ABS.ESinglConstr qu) = pure $ maybeUpException $ HS.Con $ HS.UnQual $ HS.Ident $ showQU qu
   where (modul,ident) = splitQU qu
         maybeUpException = if null modul
@@ -154,12 +154,12 @@ tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Pair"))) pexps) =
 tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"Cons"))) [l, r]) = do
    tl <- tPureExp l
    tr <- tPureExp r
-   pure $ [hs| ($tl : $tr) |]
+   pure $ [hs|($tl : $tr)|]
 tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Cons"))) _) = errorPos p "wrong number of arguments to Cons"
 tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"InsertAssoc"))) [l, r]) = do
   tl <- tPureExp l
   tr <- tPureExp r
-  pure $ [hs| (insertAssoc $tl $tr) |]
+  pure $ [hs|(insertAssoc $tl $tr)|]
 tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"InsertAssoc"))) _) = errorPos p "wrong number of arguments to InsertAssoc"
 tPureExp (ABS.EParamConstr qu args) = maybeUpException . HS.Paren <$>
                                         foldlM (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
@@ -182,7 +182,7 @@ tPureExp (ABS.EVar var@(ABS.L (p,pid))) = do
                            Just t -> if null ?cname
                                     then errorPos p "cannot access fields inside main block or pure functions"
                                     else let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname -- accessor
-                                         in maybeUpcast t [hs| ($fieldFun this'') |] -- accessor
+                                         in maybeUpcast t [hs|($fieldFun this'')|] -- accessor
                            Nothing -> case find (\ (SN ident' modul,_) -> pid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
                                        Just (_,SV Foreign _) -> HS.Var $ HS.UnQual $ HS.Ident pid
                                        _ ->  HS.Var $ HS.UnQual $ HS.Ident pid -- errorPos p $ pid ++ " not in scope" -- 
@@ -192,7 +192,7 @@ tPureExp (ABS.EThis var@(ABS.L (p, field))) = if null ?cname
                                                    then errorPos p "cannot access fields inside main block or pure code"
                                                    else case M.lookup var ?fields of
                                                           Just t -> let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname
-                                                                   in pure $ maybeUpcast t [hs| ($fieldFun this'') |]
+                                                                   in pure $ maybeUpcast t [hs|($fieldFun this'')|]
                                                           Nothing -> errorPos p "no such field"
 
 tPureExp (ABS.ELit lit) = pure $ case lit of
@@ -201,20 +201,20 @@ tPureExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LFloat f -> HS.Lit $ HS.Frac $ toRational f
                                    ABS.LThis -> if null ?cname
                                                then error "cannot access this keyword inside main block or pure code"
-                                               else [hs| (up' this) |]
-                                   ABS.LNull -> [hs| (up' null) |]
-                                   ABS.LThisDC -> [hs| thisDC |]
+                                               else [hs|(up' this)|]
+                                   ABS.LNull -> [hs|(up' null)|]
+                                   ABS.LThisDC -> [hs|thisDC|]
 
 
 -- UPCASTING
 ------------
 
 -- | upcasting an expression
-maybeUpcast :: (?st::M.Map SymbolName SymbolValue) => ABS.T -> HS.Exp -> HS.Exp
+maybeUpcast :: (?st::SymbolTable) => ABS.T -> HS.Exp -> HS.Exp
 maybeUpcast t = case t of
-  ABS.TSimple (ABS.U_ (ABS.U (_,"Int"))) -> (\ e -> [hs| (I'.fromIntegral $e) |])
+  ABS.TSimple (ABS.U_ (ABS.U (_,"Int"))) -> (\ e -> [hs|(I'.fromIntegral $e)|])
   ABS.TSimple qtyp -> let (prefix, iident) = splitQU qtyp 
                       in case find (\ (SN ident' mmodule,_) -> iident == ident' && maybe (null prefix) ((prefix,True) ==) mmodule) (M.assocs ?st) of
-                          Just (_,SV (Interface _ _) _) -> (\ e -> [hs| (up' $e) |]) -- is interface
+                          Just (_,SV (Interface _ _) _) -> (\ e -> [hs|(up' $e)|]) -- is interface
                           _ -> id
   _ -> id

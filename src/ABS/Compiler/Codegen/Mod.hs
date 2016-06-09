@@ -11,7 +11,6 @@ import ABS.Compiler.Codegen.Stm (tMethod)
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Language.Haskell.Exts.QQ (dec)
-import Language.Haskell.Exts.SrcLoc (SrcLoc(..))
 
 import qualified Data.Map as M (Map, lookup, keys, empty)
 import Data.List (find)
@@ -27,14 +26,14 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   (HS.ModuleName thisModuleName)
   -- MODULE PRAGMAS
   [ HS.LanguagePragma noLoc' [ HS.Ident "NoImplicitPrelude" -- for not importing haskell's prelude
-                            , HS.Ident "ExistentialQuantification" -- for heterogeneous collections
-                            , HS.Ident "MultiParamTypeClasses" -- for subtyping
-                            , HS.Ident "ScopedTypeVariables" -- in ABS typevars are scoped(over the whole function),in Haskell not by default
-                            , HS.Ident "FlexibleContexts" -- for some type inference of methods
-                            , HS.Ident "PartialTypeSignatures" -- for inferring Eq,Ord contexts. Requires GHC>=7.10
-                            , HS.Ident "DeriveDataTypeable" -- for defining ABS exceptions (exceptions are dynamically typed in haskell)
-                            , HS.Ident "LambdaCase" -- easier codegen for exceptions extension
-                            ]
+                             , HS.Ident "ExistentialQuantification" -- for heterogeneous collections
+                             , HS.Ident "MultiParamTypeClasses" -- for subtyping
+                             , HS.Ident "ScopedTypeVariables" -- in ABS typevars are scoped(over the whole function),in Haskell not by default
+                             , HS.Ident "FlexibleContexts" -- for some type inference of methods
+                             , HS.Ident "PartialTypeSignatures" -- for inferring Eq,Ord contexts. Requires GHC>=7.10
+                             , HS.Ident "DeriveDataTypeable" -- for defining ABS exceptions (exceptions are dynamically typed in haskell)
+                             , HS.Ident "LambdaCase" -- easier codegen for exceptions extension
+                             ]
     -- -fwarn-missing-methods:  for making error the missing ABS class methods
     -- -fno-ignore-asserts:  for not ignoring asserts (which is the default in Haskell)
     -- all other warnings are ignored
@@ -136,7 +135,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
 
  -- TRANSLATED TOP-LEVEL DECLARATIONS
  (let ?st = st 
-  in [dec| default (Int,Rat) |] -- better for type inference of numeric variables
+  in [dec|default (Int,Rat)|] -- better for type inference of numeric variables
      : concatMap (\ (ABS.AnnDecl _ d) -> tDecl d) decls
      ++ tMain maybeMain)
 
@@ -244,6 +243,6 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                                                       
     tMain :: (?st::SymbolTable) => ABS.MaybeBlock -> [HS.Decl]
     tMain ABS.NoBlock = []
-    tMain (ABS.JustBlock block) = [[dec| main = main_is' (\ this -> $(tMethod block [] M.empty "" [] False)) |]] -- no params, no fields, empty class-name, no alone-methods
+    tMain (ABS.JustBlock block) = [[dec|main = main_is' (\ this -> $(tMethod block [] M.empty "" [] False))|]] -- no params, no fields, empty class-name, no alone-methods
 
 

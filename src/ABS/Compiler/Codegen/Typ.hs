@@ -14,7 +14,7 @@ import Control.Exception (assert)
 
 -- | Translating an ABS type or an ABS type-variable to a Haskell type
 tTypeOrTyVar :: [ABS.U]     -- ^ tyvars in scope
-             -> ABS.T         -- ^ abs type
+             -> ABS.T       -- ^ abs type
              -> HS.Type
 tTypeOrTyVar _ (ABS.TSimple (ABS.U_ (ABS.U (_, "Exception")))) = HS.TyCon $ HS.Qual (HS.ModuleName "I'") (HS.Ident "SomeException")
 tTypeOrTyVar tyvars (ABS.TSimple qtyp)  = 

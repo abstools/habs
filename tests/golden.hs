@@ -45,7 +45,8 @@ main = do
                                          , hsOutputDir </> sample <.> "hs"]
 
     withArgs ("-j1":"--catch-stderr":args) $ -- don't run tests in parallel because it messes output
-       defaultMainWithIngredients (htmlRunner:defaultIngredients)(
+       defaultMainWithIngredients (htmlRunner:defaultIngredients) $
+        --localOption (mkTimeout 2000000) $ -- timeouts any test at 2s
          testGroup "habs" [
            testGroup "must" [ testGroup "transpile" $ map (\ sample -> testCase sample $ transpile ("habs-samples"</>"must") sample) must
                             , testGroup "compile" $ map (\ sample -> testProgram sample ghc (ghcArgs sample) Nothing) must]
@@ -60,7 +61,7 @@ main = do
                                      , testGroup "compile" $ map (\ sample -> testProgram sample ghc (ghcArgs sample) Nothing) must_deadlock
                                      , testGroup "execute" $ map (\ sample -> expectFail $ testProgram sample "env" [hsOutputDir </> sample] Nothing) must_deadlock
                                      ]
-                       ])
+                       ]
 
 
 transpile parentDir sample = do
