@@ -296,7 +296,7 @@ tDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (mkLoc ipos)
        -- null class is an instance of any interface
        : HS.InstDecl noLoc' Nothing [] [] (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyCon $ HS.UnQual $ HS.Ident "Null'"] 
              (map (\ (ABS.MethSig _ _ (ABS.L (_,mid)) _) -> 
-                       HS.InsDecl [dec|__mid__ = I'.error  "this should not happen. report the program to the compiler developers"|] ) ms)
+                       HS.InsDecl [dec|__mid__ = I'.undefined|] ) ms)
 
 
       : -- Sub instance for unwrapped this & null
