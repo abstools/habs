@@ -1078,18 +1078,29 @@ tStm (ABS.AnnStm _ (ABS.SAwait ag)) = do
       (locals, fields,onlyPureDeps) <- depends [pexp]
       (formalParams, _) <- getFormalLocal
       scopeLevels <- get
-      (if null fields then warnPos (1,1) "You are not checking for anything observable in AWAIT" else id)
-        pure [HS.Qualifier $
-                   if onlyPureDeps
-                   then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
-                        in [hs|awaitBool' this (\ this'' -> $texp)|]
-                   else let texp = runReader (let ?tyvars = [] in tPureExp pexp) (M.unions scopeLevels)
-                            expWrapped = foldl (\ acc (ABS.L (_, nextVar)) -> 
+      pure [HS.Qualifier $
+        if null fields 
+        then warnPos (1,1) "the calling process and its parent(s) may block" $
+            if onlyPureDeps
+            then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+                 in [hs|if $texp then I'.pure () else awaitDuration' this 2147 2147|] -- simulate blocking by waiting for long (32-bit systems allows max int32 as 2147
+            else let texp = runReader (let ?tyvars = [] in tPureExp pexp) (M.unions scopeLevels)
+                     expWrapped = foldl (\ acc (ABS.L (_, nextVar)) -> 
                                                     let nextIdent = HS.Ident nextVar 
                                                     in [hs|(\ ((nextIdent)) -> $acc) =<< I'.readIORef $(HS.Var $ HS.UnQual nextIdent)|])
                                          [hs|I'.pure (\ this'' -> $texp)|]
                                          (nub locals)
-                        in [hs|awaitBool' this =<< I'.lift ($expWrapped)|]]
+                  in [hs|(\case {True -> I'.pure (); False -> awaitDuration' this 2147 2147}) =<< I'.lift ($expWrapped)|] 
+        else if onlyPureDeps
+             then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+                  in [hs|awaitBool' this (\ this'' -> $texp)|]
+             else let texp = runReader (let ?tyvars = [] in tPureExp pexp) (M.unions scopeLevels)
+                      expWrapped = foldl (\ acc (ABS.L (_, nextVar)) -> 
+                                                    let nextIdent = HS.Ident nextVar 
+                                                    in [hs|(\ ((nextIdent)) -> $acc) =<< I'.readIORef $(HS.Var $ HS.UnQual nextIdent)|])
+                                         [hs|I'.pure (\ this'' -> $texp)|]
+                                         (nub locals)
+                  in [hs|awaitBool' this =<< I'.lift ($expWrapped)|]]
 
 tStm (ABS.AnnStm _ (ABS.SGive pexp1 pexp2)) = do
   (formalParams, localVars) <- getFormalLocal

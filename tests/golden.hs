@@ -46,7 +46,7 @@ main = do
 
     withArgs ("-j1":"--catch-stderr":args) $ -- don't run tests in parallel because it messes output
        defaultMainWithIngredients (htmlRunner:defaultIngredients) $
-        --localOption (mkTimeout 2000000) $ -- timeouts any test at 2s
+        localOption (mkTimeout 30000000) $ -- timeouts any test at 30s
          testGroup "habs" [
            testGroup "must" [ testGroup "transpile" $ map (\ sample -> testCase sample $ transpile ("habs-samples"</>"must") sample) must
                             , testGroup "compile" $ map (\ sample -> testProgram sample ghc (ghcArgs sample) Nothing) must]
