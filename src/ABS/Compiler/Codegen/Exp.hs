@@ -77,14 +77,14 @@ tPureExp (ABS.EEq (ABS.ELit ABS.LNull) pvar@(ABS.EVar ident@(ABS.L (p,str)))) = 
 tPureExp (ABS.EEq pvar@(ABS.EVar _) pnull@(ABS.ELit ABS.LNull)) = tPureExp (ABS.EEq pnull pvar)
 
 -- optimization, to wrap null with the direct interface of rhs instead of up'
-tPureExp (ABS.EEq (ABS.ELit ABS.LNull) pvar@(ABS.EThis ident@(ABS.L (p,str)))) = do
+tPureExp (ABS.EEq (ABS.ELit ABS.LNull) pvar@(ABS.EField ident@(ABS.L (p,str)))) = do
    tvar <- tPureExp pvar
    pure $ case M.lookup ident ?fields of -- check the type of the right var
             Just (ABS.TSimple qu) -> [hs|( $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu) null == $tvar )|]
             Just _ -> errorPos p "cannot equate null to non-interface type"
             Nothing -> errorPos p $ str ++ " not in scope"
 -- commutative
-tPureExp (ABS.EEq pvar@(ABS.EThis _) pnull@(ABS.ELit ABS.LNull)) = tPureExp (ABS.EEq pnull pvar)
+tPureExp (ABS.EEq pvar@(ABS.EField _) pnull@(ABS.ELit ABS.LNull)) = tPureExp (ABS.EEq pnull pvar)
 
 -- tPureExp (ABS.EEq pvar1@(ABS.EVar ident1@(ABS.LIdent (p1,str1))) pvar2@(ABS.EVar ident2@(ABS.LIdent (p2,str2)))) _tyvars = do
 --   tvar1 <- tPureExp pvar1 _tyvars
@@ -188,7 +188,7 @@ tPureExp (ABS.EVar var@(ABS.L (p,pid))) = do
                                        _ ->  HS.Var $ HS.UnQual $ HS.Ident pid -- errorPos p $ pid ++ " not in scope" -- 
 
 
-tPureExp (ABS.EThis var@(ABS.L (p, field))) = if null ?cname
+tPureExp (ABS.EField var@(ABS.L (p, field))) = if null ?cname
                                                    then errorPos p "cannot access fields inside main block or pure code"
                                                    else case M.lookup var ?fields of
                                                           Just t -> let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname
