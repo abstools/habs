@@ -937,16 +937,22 @@ tStm (ABS.AnnStm annots (ABS.SDecAss t i@(ABS.L (p,n)) e)) = do
 --- DISPATCHER: LOCAL-VARIABLE OR FIELD ASSIGMENT
 
 tStm (ABS.AnnStm a (ABS.SAss i e)) = do
-  scope <- M.unions <$> get
-  pure . HS.Qualifier <$> 
-    case M.lookup i scope of
-      Just typ -> tAss a typ i e 
-      Nothing -> if i `M.member` ?fields
-                 then tFieldAss a i e -- normalize it to fieldass
-                 else error "not in scope"
+  scope <- M.unions <$> get 
+  case M.lookup i scope of
+    Just typ -> pure . HS.Qualifier <$> tAss a typ i e 
+    Nothing -> if i `M.member` ?fields
+               then tStm (ABS.AnnStm a (ABS.SFieldAss i e)) -- normalize it to fieldass
+               else error "not in scope"
 
 -- DISPATCHER: FIELD_ASSIGNMENT
-tStm (ABS.AnnStm a (ABS.SFieldAss i e)) = pure . HS.Qualifier <$> tFieldAss a i e
+tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.L (_,f)) e)) = do
+  fieldUpdated <- tFieldAss a i e
+  pure $ case M.lookup i ?fields of
+      Just (ABS.TPoly (ABS.U_ (ABS.U (_,"Fut"))) _) -> 
+        let fieldFun'' = HS.Var $ HS.UnQual $ HS.Ident $ f ++ "''" ++ ?cname in -- field-fun for extra field
+        [ HS.Qualifier fieldUpdated
+        , HS.Qualifier [hs|I'.lift ((\ this'' -> I'.mapM_ (`I'.throwTo` ChangedFuture' ($(fieldFun i) this'')) ($fieldFun'' this'')) =<< I'.readIORef this')|]] 
+      _ -> [HS.Qualifier fieldUpdated]
 
 ------------------------- RETURN , STANDALONE EXPRESSION
 
@@ -1044,8 +1050,10 @@ tStm (ABS.AnnStm _ (ABS.SAwait ag)) = do
                   texp2 = runReader (let ?vars = localVars in tStmExp pexp2) formalParams
               in [hs|(\ e1' -> awaitDuration' this e1' =<< $texp2) =<< $texp1|] ]
 
-    -- currently, no solution to the cosimo problem
-    tGuard (ABS.GFutField f) = pure [HS.Qualifier [hs|(awaitFuture' this . $(fieldFun f)) =<< I'.lift (I'.readIORef this')|]]
+    tGuard (ABS.GFutField i@(ABS.L (_, field))) = 
+      let extraFieldName = HS.UnQual $ HS.Ident $ field ++ "''" ++ ?cname
+          recordUpdate'' = HS.RecUpdate [hs|this''|] [HS.FieldUpdate extraFieldName [hs|f' ($(HS.Var extraFieldName) this'')|]]
+      in pure [HS.Qualifier [hs|(awaitFutureField' this (\ f' this'' -> $recordUpdate'') . $(fieldFun i)) =<< I'.lift (I'.readIORef this')|]]
 
     tGuard (ABS.GExp pexp) = do
       (locals, fields,onlyPureDeps) <- depends [pexp]

@@ -101,7 +101,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
                   -- Ord and Show have to be IThingAll, so we can define custom instances
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "IO", HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "undefined", HS.IVar $ HS.Ident "error", HS.IVar $ HS.Ident "negate", HS.IVar $ HS.Ident "fromIntegral"])
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "IO", HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "undefined", HS.IVar $ HS.Ident "error", HS.IVar $ HS.Ident "negate", HS.IVar $ HS.Ident "fromIntegral", HS.IVar $ HS.Ident "mapM_"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Unsafe.Coerce" 
@@ -116,6 +116,12 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Typeable"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
+   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Concurrent" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "ThreadId"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Exception" 
                   , HS.importQualified = False
                   , HS.importAs = Nothing
@@ -125,7 +131,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Exception" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IThingAll $ HS.Ident "SomeException"])
+                  , HS.importSpecs = Just (False,[HS.IThingAll $ HS.Ident "SomeException", HS.IVar $ HS.Ident "throwTo"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   ]

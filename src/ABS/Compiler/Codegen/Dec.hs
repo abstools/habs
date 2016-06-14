@@ -53,9 +53,13 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
 
   -- An ADT-record which contains the fields of the class
   HS.DataDecl (mkLoc cpos) HS.DataType [] (HS.Ident clsName) [] 
-        [HS.QualConDecl noLoc' [] [] $ HS.RecDecl (HS.Ident clsName) (map (\ ((ABS.L (_,i)), t) -> ([HS.Ident $  i ++ "'" ++ clsName], 
-                                                                                                                tType t -- TODO: bang if prim type
-                                                                                                      )) (M.toAscList fields))]  []
+        [HS.QualConDecl noLoc' [] [] $ HS.RecDecl (HS.Ident clsName) 
+                    (foldl (\ acc ((ABS.L (_,i)), t) ->
+                      (case t of
+                        ABS.TPoly (ABS.U_ (ABS.U (_,"Fut")))  _ -> (([HS.Ident $  i ++ "''" ++ clsName], [ty|[I'.ThreadId]|]) :) -- an extra field holding the threadids
+                        _ -> id)
+                      (([HS.Ident $  i ++ "'" ++ clsName], tType t): acc) -- TODO: bang if prim type
+                     ) [] $ M.toAscList fields)] []
 
   : -- A smart-constructor for pure fields
   HS.FunBind [HS.Match noLoc' (HS.Ident $ "smart'" ++ clsName)
@@ -74,17 +78,21 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
        runReader (foldlM (\ acc -> \case
                            
                    -- Field f = val;
-                   ABS.FieldAssignClassBody _t (ABS.L (_, fid)) pexp -> do
-                      texp <- tPureExp pexp
-                      return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) texp : acc
-
+                   ABS.FieldAssignClassBody t (ABS.L (_, fid)) pexp -> do 
+                    texp <- tPureExp pexp
+                    pure $ (case t of
+                              ABS.TPoly (ABS.U_ (ABS.U (_,"Fut")))  _ -> (HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "''" ++ clsName) [hs|[]|] :) -- the extra future field is empty
+                              _ -> id)
+                           (HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) texp : acc)
                    -- Field f;
-                   ABS.FieldClassBody t (ABS.L (p,fid)) ->  case t of
+                   ABS.FieldClassBody t (ABS.L (p,fid)) -> pure $ case t of
                                -- it is an unitialized future (abs allows this)
                                ABS.TPoly (ABS.U_ (ABS.U (_,"Fut")))  _ -> 
-                                   return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) [hs|nullFuture'|] : acc
+                                    HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) [hs|nullFuture'|] 
+                                  : HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "''" ++ clsName) [hs|[]|] -- the extra future field is empty 
+                                  : acc
                                -- it may be an object (to be set to null) or foreign (to be set to undefined)
-                               ABS.TSimple qtyp -> return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
+                               ABS.TSimple qtyp -> HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
                                                   (let (prefix, ident) = splitQU qtyp
                                                        Just (SV symbolType _) = if null prefix
                                                                                then snd <$> find (\ (SN ident' modul,_) -> ident == ident' && maybe True (not . snd) modul) (M.assocs ?st)
@@ -95,7 +103,7 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
                                                         _ -> errorPos p "A field must be initialised if it is not of a reference type"
                                                   ) : acc
                                -- it may be foreign (to be set to undefined)
-                               ABS.TPoly qtyp _ -> return $ HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
+                               ABS.TPoly qtyp _ -> HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
                                                   (let (prefix, ident) = splitQU qtyp
                                                        Just (SV symbolType _) = if null prefix
                                                                                 then M.lookup (SN ident Nothing) ?st
@@ -108,7 +116,7 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
                                ABS.TInfer -> errorPos p "Cannot infer type of field which has not been assigned"
 
                    ABS.MethClassBody _ _ _ _ -> case mInit of
-                               ABS.NoBlock -> return acc -- ignore, TODO: maybe this allows methclassbody to be intertwined with fieldbody
+                               ABS.NoBlock -> pure acc -- ignore, TODO: maybe this allows methclassbody to be intertwined with fieldbody
                                ABS.JustBlock _-> fail "Second parsing error: Syntactic error, no method declaration accepted here"
 
                           )
