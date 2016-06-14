@@ -1011,35 +1011,37 @@ tStm (ABS.AnnStm _ (ABS.SDec t i@(ABS.L (p,n)))) = do
 tStm (ABS.AnnStm _ ABS.SSuspend) = pure [HS.Qualifier [hs|suspend this|]]
 
 tStm (ABS.AnnStm _ (ABS.SAwait ag)) = do
-  let (futureGuards, boolGuards) = splitGuard ag
-  tfguards <- mapM tGuard futureGuards   -- sequentialize: await f1guard? ; await f2guard?;
-  tbguards <- if null boolGuards
-             then pure []                           
-             else tGuard (foldl1 (\ (ABS.GExp exp1) (ABS.GExp exp2) -> ABS.GExp $ exp1 `ABS.EAnd` exp2) boolGuards) -- combine bguards with boolean AND
-  pure $ concat tfguards ++ tbguards
-  where
-    splitGuard :: ABS.AwaitGuard -> ([ABS.AwaitGuard], [ABS.AwaitGuard])
-    splitGuard g = splitGuard' g ([],[])
-    splitGuard' g (fs,as)= case g of
-                             ABS.GFutField _ -> (g:fs,as)
-                             ABS.GFut _ -> (g:fs,as)
-                             ABS.GDuration _ _ -> (g:fs, as)
-                             ABS.GExp _ -> (fs,g:as)
-                             ABS.GAnd gl gr -> let 
-                                                   (fsl,asl) = splitGuard gl
-                                                   (fsr,asr) = splitGuard gr 
-                                                  in (fsl++fs++fsr,asl++as++asr)
-    tGuard (ABS.GAnd _ _ ) = total
-    tGuard (ABS.GFut var@(ABS.L (_, fname))) = do
-      (formalParams, localVars) <- getFormalLocal
-      if var `M.member` formalParams 
-        then  pure [HS.Qualifier [hs|awaitFuture' this $(HS.Var $ HS.UnQual $ HS.Ident fname)|]]
-        else if var `M.member` localVars
-             then pure [HS.Qualifier [hs|awaitFuture' this =<< I'.lift (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident fname))|]]
-             else tGuard (ABS.GFutField var) -- try as field-future
+  formalLocal <- getFormalLocal
 
-    tGuard (ABS.GDuration pexp1 pexp2) = do
-      (formalParams, localVars) <- getFormalLocal
+  let (durationExps,futureLocals, futureFields, boolExps) = splitGuard ag formalLocal
+
+  tds <- tGDur durationExps formalLocal -- todo: partial nubbing, because BNFC provides Eq PureExp ?
+  let tls = tGFut (nub futureLocals) formalLocal -- faster to nub them
+  let tfs =  tGFutField (nub futureFields) -- faster to nub them
+  tbs <- tGBool boolExps formalLocal -- todo: partial nubbing, because BNFC provides Eq PureExp ?
+
+  pure $ tds ++ tls ++ tfs ++ tbs 
+  
+  where
+    -- splitGuard :: ABS.AwaitGuard - ([(ABS.PureExp, ABS.PureExp)], [ABS.L], [ABS.L], [ABS.PureExp])
+    splitGuard g = splitGuard' g ([],[],[],[])
+    splitGuard' g (ds,ls,fs,bs) (formalParams, localVars) = case g of
+                             ABS.GDuration mi ma -> ((mi,ma):ds,ls,fs,bs)
+                             ABS.GFut i -> if i `M.member` formalParams || i `M.member` localVars
+                                           then (ds,i:ls,fs,bs)
+                                           else (ds,ls,i:fs,bs) -- is a future field
+                             ABS.GFutField i -> (ds,ls,i:fs,bs)
+                             ABS.GExp b -> (ds,ls,fs,b:bs)
+                             ABS.GAnd gl gr -> let 
+                                                   (ds1,ls1,fs1,bs1) = splitGuard gl (formalParams,localVars)
+                                                   (ds2,ls2,fs2,bs2) = splitGuard gr (formalParams,localVars)
+                                               in (ds1++ds2,ls1++ls2,fs1++fs2,bs1++bs2)
+    
+    tGDur [] _ = pure []
+    tGDur durationExps (formalParams,localVars) = do
+      let (minExps, maxExps) = unzip durationExps
+          pexp1 = ABS.ENaryFunCall (ABS.L_ (ABS.L ((1,1),"maximum"))) minExps -- we take the maximum of earliest deadline
+          pexp2 = ABS.ENaryFunCall (ABS.L_ (ABS.L ((1,1),"minimum"))) maxExps -- we take the minimum of latest deadline
       (_,fields,onlyPureDeps) <- depends [pexp1,pexp2]
       pure [HS.Qualifier $ maybeThis fields $
          if onlyPureDeps
@@ -1050,14 +1052,31 @@ tStm (ABS.AnnStm _ (ABS.SAwait ag)) = do
                   texp2 = runReader (let ?vars = localVars in tStmExp pexp2) formalParams
               in [hs|(\ e1' -> awaitDuration' this e1' =<< $texp2) =<< $texp1|] ]
 
-    tGuard (ABS.GFutField i@(ABS.L (_, field))) = 
+
+    tGFut [] _ = [] 
+    tGFut [var@(ABS.L (_, fname))] (formalParams,_)  = [HS.Qualifier $ 
+      if var `M.member` formalParams 
+      then [hs|awaitFuture' this $(HS.Var $ HS.UnQual $ HS.Ident fname)|]
+      else [hs|awaitFuture' this =<< I'.lift (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident fname))|]] -- it is a local var
+    tGFut vars (formalParams,_) = 
+      let maybeImpure e var@(ABS.L (_,fname)) = if var `M.member` formalParams 
+                                                then HS.App e (HS.Var $ HS.UnQual $ HS.Ident fname)
+                                                else [hs| ($e =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident fname))|]
+          pollingTest = HS.List $ map (maybeImpure [hs|I'.isEmptyMVar|]) vars
+          blockingAction = foldl1 (`HS.InfixApp` (HS.QVarOp $ HS.UnQual $ HS.Symbol "*>")) $ map (maybeImpure [hs|I'.readMVar|]) vars
+      in [HS.Qualifier [hs|awaitFutures' this $pollingTest $blockingAction|]]
+    
+    tGFutField [] =  []
+    tGFutField [i@(ABS.L (_, field))] = 
       let extraFieldName = HS.UnQual $ HS.Ident $ field ++ "''" ++ ?cname
           recordUpdate'' = HS.RecUpdate [hs|this''|] [HS.FieldUpdate extraFieldName [hs|f' ($(HS.Var extraFieldName) this'')|]]
-      in pure [HS.Qualifier [hs|(awaitFutureField' this (\ f' this'' -> $recordUpdate'') . $(fieldFun i)) =<< I'.lift (I'.readIORef this')|]]
+      in [HS.Qualifier [hs|(awaitFutureField' this (\ f' this'' -> $recordUpdate'') . $(fieldFun i)) =<< I'.lift (I'.readIORef this')|]]
+    tGFutField _ = todo
 
-    tGuard (ABS.GExp pexp) = do
+    tGBool [] _ = pure []
+    tGBool boolExps (formalParams,_) = do
+      let pexp = foldl1 ABS.EAnd boolExps -- combine with boolean and
       (locals, fields,onlyPureDeps) <- depends [pexp]
-      (formalParams, _) <- getFormalLocal
       scopeLevels <- get
       pure [HS.Qualifier $
         if null fields 

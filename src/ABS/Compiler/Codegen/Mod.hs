@@ -64,7 +64,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Applicative" 
                   , HS.importQualified = False
                   , HS.importAs = Nothing
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Symbol "<*>"])
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Symbol "<*>", HS.IVar $ HS.Symbol "*>"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad" 
@@ -120,6 +120,12 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "ThreadId"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Concurrent.MVar" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "isEmptyMVar", HS.IVar $ HS.Ident "readMVar"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Exception" 
