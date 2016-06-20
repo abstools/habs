@@ -267,8 +267,8 @@ tDecl (ABS.DException constr) =
     [HS.QualConDecl noLoc' [] [] 
       (HS.ConDecl (HS.Ident cid)
         (map (HS.TyBang HS.BangedTy . tType . typOfConstrType) cargs))]
-    -- two deriving for exception datatypes (TODO: Eq for ABS)
-    (map (\ n -> (HS.Qual (HS.ModuleName "I'") (HS.Ident n), [])) ["Show","Typeable"])
+    -- two deriving for exception datatypes Show and Typeable (TODO: Eq for ABS) (GHC>=7.10 by default auto-derives Typeable if needed)
+    [(HS.Qual (HS.ModuleName "I'") (HS.Ident "Show"), [])]
   -- 2) a instance Exception MyException
   , HS.InstDecl noLoc' Nothing [] [] (HS.UnQual $ HS.Ident $ "Exception") [HS.TyCon $ HS.UnQual $ HS.Ident cid] [] ]
   -- TODO: allow or disallow record-accessor functions for exception, because it requires type-safe casting

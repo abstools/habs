@@ -20,7 +20,7 @@ import System.Directory (getDirectoryContents, doesDirectoryExist, createDirecto
 import System.FilePath ((</>), (<.>), dropExtension)
 import Data.List (isSuffixOf)
 
-import Control.Exception (catch, SomeException)  --  hack for neg tests
+import Control.Exception (catch, SomeException)  --  hack for not_compile tests
 
 hsOutputDir = "dist"</>"test"</>"gen"</>"haskell"
 
@@ -31,10 +31,9 @@ main = do
 
     createDirectoryIfMissing True hsOutputDir
 
-    must <- map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents ("habs-samples"</>"must")
-    could <- map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents ("habs-samples"</>"could")
-    neg <- map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents ("habs-samples"</>"neg")
-    must_deadlock <- map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents ("habs-samples"</>"must_deadlock")
+    must <- map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents ("habs-samples"</>"must_pass")
+    not_compile <- map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents ("habs-samples"</>"not_compile")
+    deadlocked <- map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents ("habs-samples"</>"deadlocked")
 
     isSandboxed <- doesDirectoryExist ".cabal-sandbox"
     let (ghc,ghcExtraArgs) = if isSandboxed then ("cabal",["exec","ghc","--"]) else ("ghc",[])
@@ -46,20 +45,18 @@ main = do
 
     withArgs ("-j1":"--catch-stderr":args) $ -- don't run tests in parallel because it messes output
        defaultMainWithIngredients (htmlRunner:defaultIngredients) $
-        localOption (mkTimeout 30000000) $ -- timeouts any test at 30s
+        localOption (mkTimeout 10000000) $ -- timeouts any individual test **case** at 10s
          testGroup "habs" [
-           testGroup "must" [ testGroup "transpile" $ map (\ sample -> testCase sample $ transpile ("habs-samples"</>"must") sample) must
-                            , testGroup "compile" $ map (\ sample -> testProgram sample ghc (ghcArgs sample) Nothing) must]
-         , testGroup "could" [ testGroup "transpile" $ map (\ sample -> testCase sample $ transpile ("habs-samples"</>"could") sample) could
-                             , testGroup "compile" $ map (\ sample -> testProgram sample ghc (ghcArgs sample) Nothing) could]
-         , testGroup "neg" $ map (\ sample -> expectFail $ 
-                                     withResource (transpile ("habs-samples"</>"neg") sample `catch` (\ (_ :: SomeException) -> return ())) 
+           testGroup "must_pass" [ testGroup "transpile" $ map (\ sample -> testCase sample $ transpile ("habs-samples"</>"must_pass") sample) must
+                                 , testGroup "compile" $ map (\ sample -> testProgram sample ghc (ghcArgs sample) Nothing) must]
+         , testGroup "not_compile" $ map (\ sample -> expectFail $ 
+                                     withResource (transpile ("habs-samples"</>"not_compile") sample `catch` (\ (_ :: SomeException) -> return ())) 
                                                       (const $ return ())
                                                       (const $ testProgram sample ghc (ghcArgs sample) Nothing)
-                                 ) neg
-         , testGroup "must_deadlock" [ testGroup "transpile" $ map (\ sample -> testCase sample $ transpile ("habs-samples"</>"must_deadlock") sample) must_deadlock
-                                     , testGroup "compile" $ map (\ sample -> testProgram sample ghc (ghcArgs sample) Nothing) must_deadlock
-                                     , testGroup "execute" $ map (\ sample -> expectFail $ testProgram sample "env" [hsOutputDir </> sample] Nothing) must_deadlock
+                                 ) not_compile
+         , testGroup "deadlocked" [ testGroup "transpile" $ map (\ sample -> testCase sample $ transpile ("habs-samples"</>"deadlocked") sample) deadlocked
+                                     , testGroup "compile" $ map (\ sample -> testProgram sample ghc (ghcArgs sample) Nothing) deadlocked
+                                     , testGroup "execute" $ map (\ sample -> expectFail $ testProgram sample "env" [hsOutputDir </> sample] Nothing) deadlocked
                                      ]
                        ]
 

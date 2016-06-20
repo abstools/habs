@@ -31,7 +31,6 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                              , HS.Ident "ScopedTypeVariables" -- in ABS typevars are scoped(over the whole function),in Haskell not by default
                              , HS.Ident "FlexibleContexts" -- for some type inference of methods
                              , HS.Ident "PartialTypeSignatures" -- for inferring Eq,Ord contexts. Requires GHC>=7.10
-                             , HS.Ident "DeriveDataTypeable" -- for defining ABS exceptions (exceptions are dynamically typed in haskell)
                              , HS.Ident "LambdaCase" -- easier codegen for exceptions extension
                              ]
     -- -fwarn-missing-methods:  for making error the missing ABS class methods
@@ -108,12 +107,6 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "unsafeCoerce"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Typeable" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Typeable"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
    , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Concurrent" 
