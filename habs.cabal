@@ -80,6 +80,8 @@ test-suite golden
     tasty-golden,
     tasty-expected-failure,
     tasty-html,
+    -- for running the ABS programs and comparing the stdout&stderr to a golden file
+    process,
     habs-runtime,
     habs-stdlib,
     habs-parser,
