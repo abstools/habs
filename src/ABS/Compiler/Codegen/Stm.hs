@@ -1291,7 +1291,7 @@ tStm (ABS.AnnStm _ (ABS.STryCatchFinally tryStm branches mfinally)) = do
                       block@(ABS.AnnStm _ (ABS.SBlock _)) -> block
                       stm -> ABS.AnnStm [] $ ABS.SBlock [stm]) -- if single statement, wrap it in a new DO-scope
   
-  tbranches <- mapM (\ (ABS.SCaseBranch pat branchStm) -> do
+  tbranches <- concat <$> mapM (\ (ABS.SCaseBranch pat branchStm) -> do
                       tbstm <- (\case 
                                 [] -> [hs|I'.pure ()|]
                                 [HS.Qualifier tblock'] -> tblock'
@@ -1299,14 +1299,19 @@ tStm (ABS.AnnStm _ (ABS.STryCatchFinally tryStm branches mfinally)) = do
                               <$> tStm (case branchStm of
                                           block@(ABS.AnnStm _ (ABS.SBlock _)) -> block
                                           stm -> ABS.AnnStm [] (ABS.SBlock [stm])) -- if single statement, wrap it in a new DO-scope
-                      pure $ HS.App [hs|Handler'|] $ case pat of
-                                -- a catch-all is a wrapped someexception
-                                ABS.PWildCard -> [hs|\ (I'.SomeException _) -> Just ($tbstm)|]
-                                _ -> HS.LCase [
+                      pure $ case pat of
+                                -- a catch-all is a wrapped absexception
+                                ABS.PWildCard -> map (HS.App [hs|Handler'|]) 
+                                                 [ [hs|\ (PatternMatchFail _) -> Just ($tbstm)|]
+                                                 , [hs|\ DivideByZero -> Just ($tbstm)|]
+                                                 , [hs|\ (RecSelError _) -> Just ($tbstm)|]
+                                                 , [hs|\ (ABSException' _) -> Just ($tbstm)|]
+                                                 ]
+                                _ -> [HS.App [hs|Handler'|] $ HS.LCase [
                                         -- wrap the normal returned expression in a just
                                         HS.Alt noLoc' (tPattern pat) (HS.UnGuardedRhs [hs|Just ($tbstm)|]) Nothing
                                         -- pattern match fail, return nothing
-                                      , HS.Alt noLoc' HS.PWildCard (HS.UnGuardedRhs [hs|Nothing|]) Nothing]                                  
+                                      , HS.Alt noLoc' HS.PWildCard (HS.UnGuardedRhs [hs|Nothing|]) Nothing]]                                 
                     ) branches
 
   tfin <- case mfinally of

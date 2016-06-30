@@ -132,9 +132,13 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
             f (DException (ParamConstrIdent i _)) = f (DException (SinglConstrIdent i))               
 
             -- data constructors
-            f' dname (SinglConstrIdent (U (_, s))) = insertDup (SN s Nothing) 
-                                                              (SV (Datacons dname) sureExported)
-            f' dname (ParamConstrIdent i _) = f' dname (SinglConstrIdent i)
+            f' dname (SinglConstrIdent (U (_, s))) acc = insertDup (SN s Nothing) 
+                                                              (SV (Datacons dname) sureExported) acc
+            f' dname (ParamConstrIdent i args) acc = 
+              -- add also all the accessors as functions
+              foldl (\ acc' arg -> case arg of
+                                    RecordConstrType _ (L (_,s)) -> insertDup (SN s Nothing) (SV Function sureExported) acc'
+                                    _ -> acc') (f' dname (SinglConstrIdent i) acc) args
 
             -- this is needed because, "export *;" will export *ONLY* the locally-defined symbols
             -- later, the "exports" Haskell function will check also for individual (non-star) exports

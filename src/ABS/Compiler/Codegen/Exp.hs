@@ -137,10 +137,10 @@ tPureExp (ABS.ESinglConstr qu) = pure $ maybeUpException $ HS.Con $ HS.UnQual $ 
   where (modul,ident) = splitQU qu
         maybeUpException = if null modul
                            then case find (\ (SN ident' modul',_) -> ident == ident' && maybe True (not . snd) modul') (M.assocs ?st) of
-                                  Just (_,SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  Just (_,SV Exception _) -> HS.Paren . HS.App [hs|I'.toException|]
                                   _ -> id
                            else case M.lookup (SN ident (Just (modul, True))) ?st of
-                                  Just (SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  Just (SV Exception _) -> HS.Paren . HS.App [hs|I'.toException|]
                                   _ -> id
                           
 tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Triple"))) pexps) =   
@@ -168,10 +168,10 @@ tPureExp (ABS.EParamConstr qu args) = maybeUpException . HS.Paren <$>
   where (modul,ident) = splitQU qu
         maybeUpException = if null modul
                            then case find (\ (SN ident' modul',_) -> ident == ident' && maybe True (not . snd) modul') (M.assocs ?st) of
-                                  Just (_,SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  Just (_,SV Exception _) -> HS.Paren . HS.App [hs|I'.toException|]
                                   _ -> id
                            else case M.lookup (SN ident (Just (modul, True))) ?st of
-                                  Just (SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  Just (SV Exception _) -> HS.Paren . HS.App [hs|I'.toException|]
                                   _ -> id
     
 tPureExp (ABS.EVar var@(ABS.L (p,pid))) = do

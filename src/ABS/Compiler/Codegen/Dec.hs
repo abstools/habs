@@ -243,7 +243,9 @@ tDecl (ABS.DDataPoly (ABS.U (dpos,tid)) tyvars constrs) =  HS.DataDecl (mkLoc dp
 
           -- Extra record-accessor functions
           : map (\ (ABS.L (_,fname), consname, idx, len) ->  
-                     HS.FunBind [HS.Match noLoc' (HS.Ident fname) [HS.PApp (HS.UnQual (HS.Ident consname)) (replicate idx HS.PWildCard ++ [HS.PVar (HS.Ident "a")] ++ replicate (len - idx - 1) HS.PWildCard)] Nothing (HS.UnGuardedRhs (HS.Var (HS.UnQual (HS.Ident "a")))) Nothing]) (
+                     HS.FunBind [HS.Match noLoc' (HS.Ident fname) [HS.PApp (HS.UnQual (HS.Ident consname)) (replicate idx HS.PWildCard ++ [HS.PVar (HS.Ident "a")] ++ replicate (len - idx - 1) HS.PWildCard)] Nothing (HS.UnGuardedRhs (HS.Var (HS.UnQual (HS.Ident "a")))) Nothing,
+                                 HS.Match noLoc' (HS.Ident fname) [HS.PWildCard] Nothing (HS.UnGuardedRhs [hs|I'.throw (RecSelError (concatenate "Data constructor does not have accessor " $(HS.Lit $ HS.String fname)))|]) Nothing
+                     ]) (
              concatMap (\case
                ABS.SinglConstrIdent _ -> []
                ABS.ParamConstrIdent (ABS.U (_,cid)) args -> -- taking the indices of fields
@@ -270,7 +272,11 @@ tDecl (ABS.DException constr) =
     -- two deriving for exception datatypes Show and Typeable (TODO: Eq for ABS) (GHC>=7.10 by default auto-derives Typeable if needed)
     [(HS.Qual (HS.ModuleName "I'") (HS.Ident "Show"), [])]
   -- 2) a instance Exception MyException
-  , HS.InstDecl noLoc' Nothing [] [] (HS.UnQual $ HS.Ident $ "Exception") [HS.TyCon $ HS.UnQual $ HS.Ident cid] [] ]
+  , HS.InstDecl noLoc' Nothing [] [] (HS.Qual (HS.ModuleName "I'") $ HS.Ident $ "Exception") [HS.TyCon $ HS.UnQual $ HS.Ident cid] 
+      [ HS.InsDecl [dec|toException = absExceptionToException'|]
+      , HS.InsDecl [dec|fromException = absExceptionFromException'|]
+      ]
+  ]
   -- TODO: allow or disallow record-accessor functions for exception, because it requires type-safe casting
   where ((epos,cid), cargs) = case constr of
                             ABS.SinglConstrIdent (ABS.U tid) -> (tid, [])

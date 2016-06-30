@@ -153,10 +153,10 @@ tStmExp (ABS.ESinglConstr qu) = pure [hs|I'.pure $(maybeUpException $ HS.Con $ H
   where (modul,ident) = splitQU qu
         maybeUpException = if null modul
                            then case find (\ (SN ident' modul',_) -> ident == ident' && maybe True (not . snd) modul') (M.assocs ?st) of
-                                  Just (_,SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  Just (_,SV Exception _) -> HS.Paren . HS.App [hs|I'.toException|]
                                   _ -> id
                            else case M.lookup (SN ident (Just (modul, True))) ?st of
-                                  Just (SV Exception _) -> HS.Paren . HS.App [hs|I'.SomeException|]
+                                  Just (SV Exception _) -> HS.Paren . HS.App [hs|I'.toException|]
                                   _ -> id
 
 tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Triple"))) pexps) =   
@@ -194,10 +194,10 @@ tStmExp (ABS.EParamConstr qu args) = maybeUpException . HS.Paren <$>
   where (modul,ident) = splitQU qu
         maybeUpException = if null modul
                            then case find (\ (SN ident' modul',_) -> ident == ident' && maybe True (not . snd) modul') (M.assocs ?st) of
-                                  Just (_,SV Exception _) -> HS.Paren . HS.InfixApp [hs|I'.SomeException|] (HS.QConOp $ HS.UnQual $ HS.Symbol "<$!>")
+                                  Just (_,SV Exception _) -> HS.Paren . HS.InfixApp [hs|I'.toException|] (HS.QConOp $ HS.UnQual $ HS.Symbol "<$!>")
                                   _ -> id
                            else case M.lookup (SN ident (Just (modul, True))) ?st of
-                                  Just (SV Exception _) -> HS.Paren . HS.InfixApp [hs|I'.SomeException|] (HS.QConOp $ HS.UnQual $ HS.Symbol "<$!>")
+                                  Just (SV Exception _) -> HS.Paren . HS.InfixApp [hs|I'.toException|] (HS.QConOp $ HS.UnQual $ HS.Symbol "<$!>")
                                   _ -> id
                                  
 tStmExp (ABS.EVar var@(ABS.L (p,pid))) = do
