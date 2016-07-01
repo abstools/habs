@@ -1121,9 +1121,12 @@ tStm (ABS.AnnStm _ (ABS.SGive pexp1 pexp2)) = do
 tStm (ABS.AnnStm _ (ABS.SWhile pexp stmBody)) = do
   (formalParams, localVars) <- getFormalLocal
   (_, fields,_) <- depends [pexp]
-  [HS.Qualifier tbody] <- tStm $ case stmBody of
+  tbody <- (\case
+              [] -> [hs|I'.pure ()|]
+              [HS.Qualifier tbody'] -> tbody'
+              _ -> total) <$> tStm (case stmBody of
                                   ABS.AnnStm _ (ABS.SBlock _) -> stmBody
-                                  singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm]) -- if single statement, wrap it in a new DO-scope
+                                  singleStm -> ABS.AnnStm [] (ABS.SBlock [singleStm])) -- if single statement, wrap it in a new DO-scope
   let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams  -- only treat it as StmExp
       whileFun = if ?isInit then [hs|while'|] else [hs|while|]
   pure [HS.Qualifier [hs|$whileFun $(maybeThis fields texp) $tbody|]]
