@@ -341,6 +341,16 @@ tAss _ _ (ABS.L (_,n)) (ABS.ExpE (ABS.ProTry pexp)) = do
     else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
          in [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (pro_try =<< $(maybeThis fields texp))|]
 
+tAss _ _ (ABS.L (_,n)) (ABS.ExpE (ABS.Random pexp)) = do
+  (formalParams, localVars) <- getFormalLocal
+  (_,fields,onlyPureDeps) <- depends [pexp]
+  pure $ maybeLift $
+    if onlyPureDeps
+    then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+         in maybeThis fields [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< random $texp|]
+    else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+         in [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (random =<< $(maybeThis fields texp))|]
+
 tAss _ _ (ABS.L (_,n)) (ABS.ExpE ABS.ProNew) = pure $ maybeLift [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< pro_new|]
 tAss _ _ (ABS.L (_,n)) (ABS.ExpE ABS.Now) = pure $ maybeLift [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< now|]
 tAss _ _ (ABS.L (_,n)) (ABS.ExpE ABS.Readln) = pure $ maybeLift [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< readln|]
@@ -575,6 +585,17 @@ tDecAss _ _ _ (ABS.ExpE (ABS.ProTry pexp)) = do
          in maybeThis fields [hs|I'.newIORef =<< pro_try $texp|]
     else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
          in [hs|I'.newIORef =<< (pro_try =<< $(maybeThis fields texp))|]
+
+tDecAss _ _ _ (ABS.ExpE (ABS.Random pexp)) = do
+  (formalParams, localVars) <- getFormalLocal
+  (_,fields,onlyPureDeps) <- depends [pexp]
+  pure $ maybeLift $
+    if onlyPureDeps
+    then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+         in maybeThis fields [hs|I'.newIORef =<< random $texp|]
+    else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+         in [hs|I'.newIORef =<< (random =<< $(maybeThis fields texp))|]
+
 
 tDecAss _ _ _ (ABS.ExpE ABS.ProNew) = pure $ maybeLift [hs|I'.newIORef =<< pro_new|]
 
@@ -901,6 +922,16 @@ tFieldAss _ (ABS.L (_,field)) (ABS.ExpE (ABS.ProTry pexp)) = do
            in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) <$!> pro_try $texp) =<< I'.readIORef this')|]
       else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
            in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) <$!> (pro_try =<< $texp)) =<< I'.readIORef this')|]
+
+tFieldAss _ (ABS.L (_,field)) (ABS.ExpE (ABS.Random pexp)) = do
+    (formalParams, localVars) <- getFormalLocal
+    (_,__,onlyPureDeps) <- depends [pexp]
+    pure $ maybeLift $
+      if onlyPureDeps
+      then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+           in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) <$!> random $texp) =<< I'.readIORef this')|]
+      else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+           in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) <$!> (random =<< $texp)) =<< I'.readIORef this')|]
 
 tFieldAss _ (ABS.L (_,field)) (ABS.ExpE ABS.ProNew) =
   pure $ maybeLift [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) <$!> pro_new) =<< I'.readIORef this')|]
@@ -1633,6 +1664,16 @@ tEffExp (ABS.ProTry pexp) _ = do
          in maybeThis fields [hs|pro_try $texp|]
     else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
          in [hs|pro_try =<< $(maybeThis fields texp)|]
+
+tEffExp (ABS.Random pexp) _ = do
+  (formalParams, localVars) <- getFormalLocal
+  (_,fields,onlyPureDeps) <- depends [pexp]
+  pure $ maybeLift $ 
+    if onlyPureDeps
+    then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
+         in maybeThis fields [hs|random $texp|]
+    else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+         in [hs|random =<< $(maybeThis fields texp)|]
 
 
 tEffExp ABS.ProNew _ = pure $ maybeLift [hs|pro_new|]
