@@ -106,9 +106,8 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
                                ABS.TPoly qtyp _ -> HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
                                                   (let (prefix, ident) = splitQU qtyp
                                                        Just (SV symbolType _) = if null prefix
-                                                                                then M.lookup (SN ident Nothing) ?st
-                                                                                else M.lookup (SN ident (Just (prefix, False))) ?st 
-                                                                                        <|> M.lookup (SN ident (Just (prefix, True))) ?st 
+                                                                               then snd <$> find (\ (SN ident' modul,_) -> ident == ident' && maybe True (not . snd) modul) (M.assocs ?st)
+                                                                               else M.lookup (SN ident (Just (prefix, True))) ?st
                                                    in case symbolType of
                                                         Foreign -> [hs|(I'.error "foreign object not initialized")|]
                                                         _ -> errorPos p "A field must be initialised if it is not of a reference type"
