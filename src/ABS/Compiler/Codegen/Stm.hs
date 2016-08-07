@@ -59,7 +59,12 @@ tAss _ _ (ABS.L (_,n)) (ABS.ExpP pexp) = do
     else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
          in [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< $(maybeThis fields texp)|]
 
-tAss _ (ABS.TSimple qu) (ABS.L (_,n)) (ABS.ExpE (ABS.New qcname args)) = do
+tAss as (ABS.TSimple qu) (ABS.L (_,n)) (ABS.ExpE (ABS.New qcname args)) = case find (\case 
+                ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
+                _ -> False
+            ) as of
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+ _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
   let (q, cname) = splitQU qcname
@@ -376,7 +381,12 @@ tDecAss _ _ _ (ABS.ExpP pexp) = do
          in [hs|I'.newIORef =<< $(maybeThis fields texp)|]
 
 
-tDecAss _ (ABS.TSimple qu) _ (ABS.ExpE (ABS.New qcname args)) = do
+tDecAss as (ABS.TSimple qu) _ (ABS.ExpE (ABS.New qcname args)) = case find (\case 
+                ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
+                _ -> False
+            ) as of
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+ _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
   let (q, cname) = splitQU qcname
@@ -605,7 +615,11 @@ tDecAss _ _ _ (ABS.ExpE ABS.Readln) = pure $ maybeLift [hs|I'.newIORef =<< readl
 
 
 ------------------- FIELD ASSIGNMENT
-
+tFieldAss :: (?absFileName::String, ?cAloneMethods::[String], ?cname::String, ?fields::ScopeLVL, ?isInit::Bool, ?st::SymbolTable) 
+          => [ABS.Ann]
+          -> ABS.L
+          -> ABS.Exp
+          -> BlockScope HS.Exp
 tFieldAss a (ABS.L (_, field)) (ABS.ExpE (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args)) = 
  case pexp of
   ABS.ELit ABS.LThis -> do
@@ -690,7 +704,12 @@ tFieldAss _ (ABS.L (_,field)) (ABS.ExpP pexp) = do
          in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) <$!> $texp) =<< I'.readIORef this')|]
   
 
-tFieldAss _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.New qcname args)) = do
+tFieldAss as i@(ABS.L (_,field)) (ABS.ExpE (ABS.New qcname args)) = case find (\case 
+                ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
+                _ -> False
+            ) as of
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+ _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,_,onlyPureDeps) <- depends args
   let (q, cname) = splitQU qcname
@@ -987,7 +1006,7 @@ tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.L (_,f)) e)) = do
 
 ------------------------- RETURN , STANDALONE EXPRESSION
 
-tStm (ABS.AnnStm _ (ABS.SReturn (ABS.ExpE eexp))) = pure . HS.Qualifier <$> tEffExp eexp False -- keep the result
+tStm (ABS.AnnStm a (ABS.SReturn (ABS.ExpE eexp))) = pure . HS.Qualifier <$> tEffExp a eexp False -- keep the result
 tStm (ABS.AnnStm _ (ABS.SReturn (ABS.ExpP pexp))) = do
   (formalParams, localVars) <- getFormalLocal
   (_, fields,onlyPureDeps) <- depends [pexp]
@@ -998,7 +1017,7 @@ tStm (ABS.AnnStm _ (ABS.SReturn (ABS.ExpP pexp))) = do
     else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
          in texp]
 
-tStm (ABS.AnnStm _ (ABS.SExp (ABS.ExpE eexp))) = pure . HS.Generator noLoc' HS.PWildCard <$> tEffExp eexp True -- throw away the result
+tStm (ABS.AnnStm a (ABS.SExp (ABS.ExpE eexp))) = pure . HS.Generator noLoc' HS.PWildCard <$> tEffExp a eexp True -- throw away the result
 tStm (ABS.AnnStm _ (ABS.SExp (ABS.ExpP pexp))) = do
   (formalParams, localVars) <- getFormalLocal
   (_, fields,onlyPureDeps) <- depends [pexp]
@@ -1374,10 +1393,16 @@ tEffExp :: ( ?absFileName:: String
            , ?cname::String
            , ?cAloneMethods::[String]
            , ?isInit::Bool) 
-           => ABS.EffExp 
+           => [ABS.Ann]
+           -> ABS.EffExp 
            -> Bool 
            -> BlockScope HS.Exp
-tEffExp (ABS.New qcname args) _ = do
+tEffExp as (ABS.New qcname args) _ = case find (\case 
+                ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
+                _ -> False
+            ) as of
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+ _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
   let (q, cname) = splitQU qcname
@@ -1396,7 +1421,7 @@ tEffExp (ABS.New qcname args) _ = do
                                                    args) formalParams
          in [hs|new $initFun =<< $(maybeThis fields smartApplied)|]
 
-tEffExp (ABS.NewLocal qcname args) _ = do
+tEffExp _ (ABS.NewLocal qcname args) _ = do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
   let (q, cname) = splitQU qcname
@@ -1416,7 +1441,7 @@ tEffExp (ABS.NewLocal qcname args) _ = do
          in [hs|newlocal' this $initFun =<< $(maybeThis fields smartApplied)|]
 
 
-tEffExp (ABS.SyncMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
+tEffExp a (ABS.SyncMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
   ABS.EVar ident@(ABS.L (_,calleeVar)) -> do
     (formalParams, localVars) <- getFormalLocal
     scopeLevels <- get
@@ -1445,7 +1470,7 @@ tEffExp (ABS.SyncMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
                     else [hs|($mwrapped) =<< I'.lift (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))|]
       Just _ ->  errorPos p "caller variable not of interface type"
       Nothing -> if ident `M.member` ?fields
-                then tEffExp (ABS.SyncMethCall (ABS.EField ident) (ABS.L (p,mname)) args) _isAlone -- rewrite it to this.var
+                then tEffExp a (ABS.SyncMethCall (ABS.EField ident) (ABS.L (p,mname)) args) _isAlone -- rewrite it to this.var
                 else errorPos p "cannot find variable"
   ABS.EField ident ->
     case M.lookup ident ?fields of
@@ -1472,7 +1497,7 @@ tEffExp (ABS.SyncMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
   ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
 
-tEffExp (ABS.ThisSyncMethCall (ABS.L (_,mname)) args) _ = do
+tEffExp _ (ABS.ThisSyncMethCall (ABS.L (_,mname)) args) _ = do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
   pure $ 
@@ -1488,7 +1513,7 @@ tEffExp (ABS.ThisSyncMethCall (ABS.L (_,mname)) args) _ = do
                                               args) formalParams
          in [hs|(this <..>) =<< I'.lift $(maybeThis fields mapplied)|]
 
-tEffExp (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
+tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,fields,onlyPureDeps) <- depends args
@@ -1539,7 +1564,7 @@ tEffExp (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
                     else [hs|($(maybeThis fields mwrapped)) =<< (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))|]
       Just _ ->  errorPos p "caller variable not of interface type"
       Nothing -> if ident `M.member` ?fields
-                then tEffExp (ABS.AsyncMethCall (ABS.EField ident) (ABS.L (p,mname)) args) isAlone -- rewrite it to this.var
+                then tEffExp a (ABS.AsyncMethCall (ABS.EField ident) (ABS.L (p,mname)) args) isAlone -- rewrite it to this.var
                 else errorPos p "cannot find variable"
   ABS.EField ident ->
     case M.lookup ident ?fields of
@@ -1571,7 +1596,7 @@ tEffExp (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
   
 
-tEffExp (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
+tEffExp a (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
   ABS.ELit ABS.LThis -> do
           (formalParams, localVars) <- getFormalLocal
           (_,fields,onlyPureDeps) <- depends args
@@ -1616,7 +1641,7 @@ tEffExp (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
                     else [hs|($mwrapped) =<< I'.lift (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))|]
       Just _ ->  errorPos p "caller variable not of interface type"
       Nothing -> if ident `M.member` ?fields
-                 then tEffExp (ABS.AwaitMethCall (ABS.EField ident) (ABS.L (p,mname)) args) _isAlone -- rewrite it to this.var
+                 then tEffExp a (ABS.AwaitMethCall (ABS.EField ident) (ABS.L (p,mname)) args) _isAlone -- rewrite it to this.var
                  else errorPos p "cannot find variable"
   ABS.EField ident ->
     case M.lookup ident ?fields of
@@ -1644,7 +1669,7 @@ tEffExp (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
   _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
 
 
-tEffExp (ABS.Get pexp) _ = do
+tEffExp _ (ABS.Get pexp) _ = do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends [pexp]
   let sureLift = if ?isInit then error "get not allowed inside init" else (\e -> [hs|I'.lift ($e)|])
@@ -1655,7 +1680,7 @@ tEffExp (ABS.Get pexp) _ = do
     else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
          in [hs|get =<< $(maybeThis fields texp)|]
 
-tEffExp (ABS.ProTry pexp) _ = do
+tEffExp _ (ABS.ProTry pexp) _ = do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends [pexp]
   pure $ maybeLift $ 
@@ -1665,7 +1690,7 @@ tEffExp (ABS.ProTry pexp) _ = do
     else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
          in [hs|pro_try =<< $(maybeThis fields texp)|]
 
-tEffExp (ABS.Random pexp) _ = do
+tEffExp _ (ABS.Random pexp) _ = do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends [pexp]
   pure $ maybeLift $ 
@@ -1676,9 +1701,9 @@ tEffExp (ABS.Random pexp) _ = do
          in [hs|random =<< $(maybeThis fields texp)|]
 
 
-tEffExp ABS.ProNew _ = pure $ maybeLift [hs|pro_new|]
-tEffExp ABS.Now _ = pure $ maybeLift [hs|now|]
-tEffExp ABS.Readln _ = pure $ maybeLift [hs|readln|]
+tEffExp _ ABS.ProNew _ = pure $ maybeLift [hs|pro_new|]
+tEffExp _ ABS.Now _ = pure $ maybeLift [hs|now|]
+tEffExp _ ABS.Readln _ = pure $ maybeLift [hs|readln|]
 
 
 -- HELPERS
