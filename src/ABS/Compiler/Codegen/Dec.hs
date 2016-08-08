@@ -125,7 +125,7 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
   : -- The init'Class function
   [ HS.TypeSig noLoc' [HS.Ident $ "init'" ++ clsName] (HS.TyApp 
                                                       (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") 
-                                                      (HS.TyCon $ HS.UnQual $ HS.Ident clsName) `HS.TyFun` [ty|I'.IO ()|])
+                                                      (HS.TyCon $ HS.UnQual $ HS.Ident clsName) `HS.TyFun` [ty|I'.Process ()|])
   , HS.FunBind [HS.Match (mkLoc cpos) (HS.Ident $ "init'" ++ clsName)
                [[pat|this@(Obj' this' _)|]] -- this, the only param
                Nothing 
@@ -141,8 +141,25 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
                                                    _ -> runCall -- runcall the only rhs
                                             else tMethod block [] fields clsName (M.keys aloneMethods) True
                ) Nothing] ]
-    
-
+  ++ -- the remote init
+  let smartApplied = foldl (\ acc (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.App acc $ HS.Var $ HS.UnQual $ HS.Ident pid)
+                      (HS.Var $ HS.UnQual $ HS.Ident $ "smart'" ++ clsName) cparams
+  in [ HS.FunBind [HS.Match (mkLoc cpos) (HS.Ident $ "init''" ++ clsName)
+      [HS.PTuple HS.Boxed $ map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) cparams]
+      Nothing
+      (HS.UnGuardedRhs [hs|do
+        newCogSleepTable' <- I'.liftIO (I'.newIORef [])
+        newCogMailBox' <- I'.liftIO I'.newTQueueIO
+        let newCog' = Cog' newCogSleepTable' newCogMailBox'
+        newObj'Contents <- I'.liftIO (I'.newIORef ($smartApplied))
+        let newObj' = Obj' newObj'Contents newCog'
+        init'C newObj'
+        I'.evalContT =<< I'.receiveWait
+                    [ I'.match I'.unClosure
+                    , I'.matchSTM (I'.readTQueue newCogMailBox') I'.pure
+                    ]
+                       |]
+      ) Nothing] ]
   ++  -- The direct&indirect instances for interfaces
   concatMap (\ qtyp -> let 
     (prefix, ident) = splitQU qtyp

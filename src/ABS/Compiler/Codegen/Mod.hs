@@ -32,6 +32,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                              , HS.Ident "FlexibleContexts" -- for some type inference of methods
                              , HS.Ident "PartialTypeSignatures" -- for inferring Eq,Ord contexts. Requires GHC>=7.10
                              , HS.Ident "LambdaCase" -- easier codegen for exceptions extension
+                             , HS.Ident "TemplateHaskell" -- for boilerplate generation provided by Cloud Haskell
                              ]
     -- -fwarn-missing-methods:  for making error the missing ABS class methods
     -- -fno-ignore-asserts:  for not ignoring asserts (which is the default in Haskell)
@@ -48,6 +49,12 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                    , HS.importQualified = False
                    , HS.importAs = Nothing
                    , HS.importLoc = noLoc', HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
+                   }
+   , HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.Runtime.TQueue" 
+                   , HS.importQualified = True
+                   , HS.importAs = Just (HS.ModuleName "I'")
+                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "newTQueueIO", HS.IVar $ HS.Ident "readTQueue"])
+                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                    }
    , HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.StdLib"
                    , HS.importQualified = False
@@ -133,6 +140,24 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importSpecs = Just (False,[HS.IThingAll $ HS.Ident "Exception", HS.IVar $ HS.Ident "SomeException", HS.IVar $ HS.Ident "throwTo", HS.IVar $ HS.Ident "throw"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Distributed.Process" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Process", HS.IVar $ HS.Ident "liftIO", HS.IVar $ HS.Ident "spawn", HS.IVar $ HS.Ident "receiveWait", HS.IVar $ HS.Ident "match", HS.IVar $ HS.Ident "matchSTM", HS.IVar $ HS.Ident "unClosure"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Distributed.Process.Closure" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "remotable", HS.IVar $ HS.Ident "mkClosure"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad.Trans.Cont" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "evalContT"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }                 
   ]
   -- TRANSLATED IMPORTS OF THE ABS-PROGRAM
   ++ concatMap tImport imports

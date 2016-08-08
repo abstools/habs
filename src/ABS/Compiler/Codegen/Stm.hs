@@ -1401,7 +1401,8 @@ tEffExp as (ABS.New qcname args) _ = case find (\case
                 ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                 _ -> False
             ) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) dcExp)) -> do
+  pure $ maybeLift [hs|I'.spawn|] -- [hs|I'.spawn I'.undefined ($(I'.mkClosure 'init''C) (3 :: Int,False))|]
  _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
