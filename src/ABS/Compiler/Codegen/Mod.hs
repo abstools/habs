@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, QuasiQuotes #-}
+{-# LANGUAGE ImplicitParams, QuasiQuotes, LambdaCase #-}
 module ABS.Compiler.Codegen.Mod 
     ( tModul
     ) where
@@ -10,9 +10,9 @@ import ABS.Compiler.Codegen.Stm (tMethod)
 
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
-import Language.Haskell.Exts.QQ (dec)
+import Language.Haskell.Exts.QQ (dec, hs)
 
-import qualified Data.Map as M (Map, lookup, keys, empty)
+import qualified Data.Map as M (Map, lookup, keys, empty, toList)
 import Data.List (find)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Char (isUpper)
@@ -167,7 +167,8 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
  (let ?st = st 
   in [dec|default (Int,Rat)|] -- better for type inference of numeric variables
      : concatMap (\ (ABS.AnnDecl _ d) -> tDecl d) decls
-     ++ tMain maybeMain)
+     ++ tRemotable 
+     : tMain maybeMain)
 
   where
     thisModuleName = showQU thisModuleQU
@@ -271,6 +272,14 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                -- function, datatype, type synonym
                _ -> [HS.IVar $ HS.Ident iden]
                                                       
+    tRemotable :: (?st::SymbolTable) => HS.Decl
+    tRemotable = 
+      let quotedRemoteFuns = foldl (\ acc -> \case 
+            (SN sn Nothing, SV Class _) -> (HS.VarQuote $ HS.UnQual $ HS.Ident $ "init''" ++ sn) : acc
+            (SN sn Nothing, SV (Interface directMethods _) _) -> map (HS.VarQuote . HS.UnQual . HS.Ident . (++ "Remote'")) directMethods ++ acc
+            _ -> acc) [] (M.toList ?st)
+      in HS.SpliceDecl noLoc' $ [hs|I'.remotable|] `HS.App` HS.List quotedRemoteFuns
+
     tMain :: (?st::SymbolTable) => ABS.MaybeBlock -> [HS.Decl]
     tMain ABS.NoBlock = []
     tMain (ABS.JustBlock block) = [[dec|main = main_is' (\ this -> $(tMethod block [] M.empty "" [] False))|]] -- no params, no fields, empty class-name, no alone-methods
