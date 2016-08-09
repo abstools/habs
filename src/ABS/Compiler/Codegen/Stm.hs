@@ -63,7 +63,22 @@ tAss as (ABS.TSimple qu) (ABS.L (_,n)) (ABS.ExpE (ABS.New qcname args)) = case f
                 ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                 _ -> False
             ) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) dcExp)) -> do
+  (formalParams, localVars) <- getFormalLocal
+  (_,fields,onlyPureDeps) <- depends args
+  let tdc = runReader (let ?vars = localVars in tStmExp dcExp) formalParams
+      targsTupled = runReader (let ?vars = localVars in foldlM
+                                                   (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
+                                                   [hs|I'.pure $(HS.Var $ HS.Special $ HS.TupleCon HS.Boxed $ length args)|]
+                                                   args) formalParams
+      (q, cname) = splitQU qcname
+      initRemoteFun = (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init''" ++ cname
+      closureFun = HS.SpliceExp $ HS.ParenSplice $ [hs|I'.mkClosure|] `HS.App` HS.VarQuote initRemoteFun 
+      objTyp = HS.TyCon $ HS.UnQual $ HS.Ident cname
+      spawnCall = [hs|spawn' dc' ($closureFun args') :: I'.Process (Obj' ((objTyp)) )|]
+  pure $ HS.Do [ HS.Generator noLoc' (HS.PVar $ HS.Ident "dc'") (fromIO $ maybeThis fields tdc)
+               , HS.Generator noLoc' (HS.PVar $ HS.Ident "args'") (fromIO $ maybeThis fields targsTupled)
+               , HS.Qualifier [hs|(I'.liftIO . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< $(maybeLift spawnCall)|] ]
  _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
@@ -385,7 +400,22 @@ tDecAss as (ABS.TSimple qu) _ (ABS.ExpE (ABS.New qcname args)) = case find (\cas
                 ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                 _ -> False
             ) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) dcExp)) -> do
+  (formalParams, localVars) <- getFormalLocal
+  (_,fields,onlyPureDeps) <- depends args
+  let tdc = runReader (let ?vars = localVars in tStmExp dcExp) formalParams
+      targsTupled = runReader (let ?vars = localVars in foldlM
+                                                   (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
+                                                   [hs|I'.pure $(HS.Var $ HS.Special $ HS.TupleCon HS.Boxed $ length args)|]
+                                                   args) formalParams
+      (q, cname) = splitQU qcname
+      initRemoteFun = (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init''" ++ cname
+      closureFun = HS.SpliceExp $ HS.ParenSplice $ [hs|I'.mkClosure|] `HS.App` HS.VarQuote initRemoteFun 
+      objTyp = HS.TyCon $ HS.UnQual $ HS.Ident cname
+      spawnCall = [hs|spawn' dc' ($closureFun args') :: I'.Process (Obj' ((objTyp)) )|]
+  pure $ HS.Do [ HS.Generator noLoc' (HS.PVar $ HS.Ident "dc'") (fromIO $ maybeThis fields tdc)
+               , HS.Generator noLoc' (HS.PVar $ HS.Ident "args'") (fromIO $ maybeThis fields targsTupled)
+               , HS.Qualifier [hs|(I'.liftIO . I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< $(maybeLift spawnCall)|] ]
  _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
@@ -708,7 +738,24 @@ tFieldAss as i@(ABS.L (_,field)) (ABS.ExpE (ABS.New qcname args)) = case find (\
                 ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                 _ -> False
             ) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) dcExp)) -> do
+  (formalParams, localVars) <- getFormalLocal
+  (_,fields,onlyPureDeps) <- depends args
+  let tdc = runReader (let ?vars = localVars in tStmExp dcExp) formalParams
+      targsTupled = runReader (let ?vars = localVars in foldlM
+                                                   (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
+                                                   [hs|I'.pure $(HS.Var $ HS.Special $ HS.TupleCon HS.Boxed $ length args)|]
+                                                   args) formalParams
+      (q, cname) = splitQU qcname
+      initRemoteFun = (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init''" ++ cname
+      closureFun = HS.SpliceExp $ HS.ParenSplice $ [hs|I'.mkClosure|] `HS.App` HS.VarQuote initRemoteFun 
+      objTyp = HS.TyCon $ HS.UnQual $ HS.Ident cname
+      spawnCall = [hs|spawn' dc' ($closureFun args') :: I'.Process (Obj' ((objTyp)) )|]
+      Just (ABS.TSimple qtyp) = M.lookup i ?fields 
+      recordUpdateCast = HS.RecUpdate [hs|this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs|$(HS.Var $ HS.UnQual $ HS.Ident $ showQU qtyp) v'|]]
+  pure $ HS.Do [ HS.Generator noLoc' (HS.PVar $ HS.Ident "dc'") (fromIO $ maybeThis fields tdc)
+               , HS.Generator noLoc' (HS.PVar $ HS.Ident "args'") (fromIO $ maybeThis fields targsTupled)
+               , HS.Qualifier [hs|(I'.liftIO . I'.writeIORef this') =<< ((\ this'' -> (\ v' -> $recordUpdateCast) <$!> $(maybeLift spawnCall)) =<< (I'.liftIO (I'.readIORef this')))|] ]
  _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,_,onlyPureDeps) <- depends args
@@ -1414,7 +1461,7 @@ tEffExp as (ABS.New qcname args) _ = case find (\case
       closureFun = HS.SpliceExp $ HS.ParenSplice $ [hs|I'.mkClosure|] `HS.App` HS.VarQuote initRemoteFun 
   pure $ HS.Do [ HS.Generator noLoc' (HS.PVar $ HS.Ident "dc'") (fromIO $ maybeThis fields tdc)
                , HS.Generator noLoc' (HS.PVar $ HS.Ident "args'") (fromIO $ maybeThis fields targsTupled)
-               , HS.Qualifier $ maybeLift [hs|I'.spawn dc' ($closureFun args')|] ]
+               , HS.Qualifier $ maybeLift [hs|spawn' dc' ($closureFun args')|] ]
 
  _ -> do
   (formalParams, localVars) <- getFormalLocal
