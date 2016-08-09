@@ -301,10 +301,7 @@ tDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (mkLoc ipos)
          [HS.InsDecl $ HS.FunBind [HS.Match noLoc' (HS.Symbol "==") 
                                    [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref1'", HS.PWildCard]],
                                     HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref2'", HS.PWildCard]]]
-                                   Nothing (HS.UnGuardedRhs $ HS.InfixApp 
-                                                  (HS.Var $ HS.UnQual $ HS.Ident "ref1'") 
-                                                  (HS.QVarOp $ HS.UnQual $ HS.Symbol "==") 
-                                                  (HS.App (HS.Var $ HS.Qual (HS.ModuleName "I'") $ HS.Ident "unsafeCoerce") (HS.Var $ HS.UnQual $ HS.Ident "ref2'"))) Nothing]]
+                                   Nothing (HS.UnGuardedRhs [hs|ref1' == I'.unsafeCoerce ref2'|]) Nothing]]
 
        -- null class is an instance of any interface
        : HS.InstDecl noLoc' Nothing [] [] (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyCon $ HS.UnQual $ HS.Ident "Null'"] 
