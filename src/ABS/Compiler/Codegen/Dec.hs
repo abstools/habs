@@ -127,7 +127,7 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
                                                       (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") 
                                                       (HS.TyCon $ HS.UnQual $ HS.Ident clsName) `HS.TyFun` [ty|I'.Process ()|])
   , HS.FunBind [HS.Match (mkLoc cpos) (HS.Ident $ "init'" ++ clsName)
-               [[pat|this@(Obj' this' _)|]] -- this, the only param
+               [[pat|this@(Obj' this' _ _)|]] -- this, the only param
                Nothing 
                (HS.UnGuardedRhs $
                   let runCall = [hs|this <!!> $(HS.Var $ HS.UnQual $ HS.Ident $ "run''" ++ clsName)|]
@@ -148,11 +148,13 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
       [HS.PTuple HS.Boxed $ map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) cparams]
       Nothing
       (HS.UnGuardedRhs [hs|do
+        self' <- I'.getSelfPid
         newCogSleepTable' <- I'.liftIO (I'.newIORef [])
         newCogMailBox' <- I'.liftIO I'.newTQueueIO
-        let newCog' = Cog' newCogSleepTable' newCogMailBox'
+        newCogCounter' <- I'.liftIO (I'.newIORef 1)
+        let newCog' = Cog' newCogSleepTable' newCogMailBox' self' newCogCounter'
         newObj'Contents <- I'.liftIO (I'.newIORef ($smartApplied))
-        let newObj' = Obj' newObj'Contents newCog'
+        let newObj' = Obj' newObj'Contents newCog' 0
         init'C newObj'
         I'.evalContT =<< I'.receiveWait
                     [ I'.match I'.unClosure
@@ -175,7 +177,7 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
           (fmap (\ mname -> let Just (ABS.MethClassBody _typ _ mparams block) = M.lookup mname classMethods
                            in HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident mname)
                                                        -- method params
-                                                       (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _)|]])
+                                                       (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _ _)|]])
                                                        Nothing 
                                                        (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
                 ) directMethods)
@@ -187,7 +189,7 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
                                 (fmap (\ mname -> let Just (ABS.MethClassBody _typ _ mparams block) = M.lookup mname classMethods
                                                  in HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident mname) 
                                                                              -- method params
-                                                                             (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _)|]])
+                                                                             (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _ _)|]])
                                                                              Nothing 
                                                                              (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
                                       ) indirectMethods) : acc
@@ -204,7 +206,7 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
                                                                        (HS.TyCon $ HS.UnQual $ HS.Ident clsName))])
            , HS.FunBind  [HS.Match noLoc' (HS.Ident $ mname ++ "''" ++ clsName)
                          -- method params
-                         (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _)|]])
+                         (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _ _)|]])
                          Nothing 
                          (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing]] )
           (M.assocs aloneMethods)
@@ -316,12 +318,9 @@ tDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (mkLoc ipos)
       : -- Eq instance for the wrapper
       HS.InstDecl noLoc' Nothing [] [] (HS.Qual (HS.ModuleName "I'") $ HS.Ident  "Eq") [HS.TyCon $ HS.UnQual $ HS.Ident tname]
          [HS.InsDecl $ HS.FunBind [HS.Match noLoc' (HS.Symbol "==") 
-                                   [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref1'", HS.PWildCard]],
-                                    HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref2'", HS.PWildCard]]]
-                                   Nothing (HS.UnGuardedRhs $ HS.InfixApp 
-                                                  (HS.Var $ HS.UnQual $ HS.Ident "ref1'") 
-                                                  (HS.QVarOp $ HS.UnQual $ HS.Symbol "==") 
-                                                  (HS.App (HS.Var $ HS.Qual (HS.ModuleName "I'") $ HS.Ident "unsafeCoerce") (HS.Var $ HS.UnQual $ HS.Ident "ref2'"))) Nothing]]
+                                   [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref1'", HS.PWildCard, HS.PWildCard]],
+                                    HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref2'", HS.PWildCard, HS.PWildCard]]]
+                                   Nothing (HS.UnGuardedRhs [hs|ref1' == I'.unsafeCoerce ref2'|]) Nothing]]
 
        -- null class is an instance of any interface
        : HS.InstDecl noLoc' Nothing [] [] (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyCon $ HS.UnQual $ HS.Ident "Null'"] 

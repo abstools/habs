@@ -143,7 +143,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Distributed.Process" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Process", HS.IVar $ HS.Ident "liftIO", HS.IVar $ HS.Ident "spawn", HS.IVar $ HS.Ident "receiveWait", HS.IVar $ HS.Ident "match", HS.IVar $ HS.Ident "matchSTM", HS.IVar $ HS.Ident "unClosure"])
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Process", HS.IVar $ HS.Ident "liftIO", HS.IVar $ HS.Ident "spawn", HS.IVar $ HS.Ident "receiveWait", HS.IVar $ HS.Ident "match", HS.IVar $ HS.Ident "matchSTM", HS.IVar $ HS.Ident "unClosure", HS.IVar $ HS.Ident "getSelfPid"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Distributed.Process.Closure" 
