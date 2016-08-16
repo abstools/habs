@@ -25,7 +25,7 @@ data SymbolType = Function
                 | Datatype
                 | Datacons String -- ^ from which datatype it comes (required by Haskell module system)
                 | Exception
-                | Class
+                | Class [String] -- ^ its direct implementing interfaces
                 | Interface [String] (Map SymbolName [String]) -- ^ its direct method names & map of *all* extends interfaces to their own methods
                 | Foreign
                   deriving Show

@@ -157,7 +157,31 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importAs = Just (HS.ModuleName "I'")
                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "evalContT"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }                 
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Typeable" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Typeable"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Binary" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IThingAll $ HS.Ident "Binary", HS.IVar $ HS.Ident "Get"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Distributed.Process.Serializable" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "fingerprint", HS.IVar $ HS.Ident "encodeFingerprint", HS.IVar $ HS.Ident "decodeFingerprint"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Map" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "fromList", HS.IVar $ HS.Ident "lookup"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }                                         
   ]
   -- TRANSLATED IMPORTS OF THE ABS-PROGRAM
   ++ concatMap tImport imports
@@ -195,7 +219,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
              Exception -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden,
                           HS.EVar $ HS.UnQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- myException' smart constructor
                          ]
-             Class -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden,
+             Class _ -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden,
                           HS.EVar $ HS.UnQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- class smart constructor
                          ]
              -- function, datatype, type synonym, foreign
@@ -222,7 +246,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
              Exception -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden,
                           HS.EVar $ maybeQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- myException' smart constructor
                          ]
-             Class -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden,
+             Class _ -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden,
                           HS.EVar $ maybeQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- class smart constructor
                          ]
              -- function, datatype, type synonym, foreign
@@ -263,7 +287,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                Exception -> [HS.IThingAll $ HS.Ident iden,
                               HS.IVar $ HS.Ident $ headToLower iden ++ "'" -- myException' smart constructor
                            ]
-               Class -> [HS.IThingAll $ HS.Ident iden,
+               Class _ -> [HS.IThingAll $ HS.Ident iden,
                           HS.IVar $ HS.Ident $ headToLower iden ++ "'" -- class smart constructor
                        ]
                Foreign -> [if isUpper $ head iden 
@@ -275,7 +299,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
     tRemotable :: (?st::SymbolTable) => HS.Decl
     tRemotable = 
       let quotedRemoteFuns = foldl (\ acc -> \case 
-            (SN sn Nothing, SV Class _) -> (HS.VarQuote $ HS.UnQual $ HS.Ident $ "init''" ++ sn) : acc
+            (SN sn Nothing, SV (Class _) _) -> (HS.VarQuote $ HS.UnQual $ HS.Ident $ "init''" ++ sn) : acc
             (SN sn Nothing, SV (Interface directMethods _) _) -> map (HS.VarQuote . HS.UnQual . HS.Ident . (++ "Remote'")) directMethods ++ acc
             _ -> acc) [] (M.toList ?st)
       in HS.SpliceDecl noLoc' $ [hs|I'.remotable|] `HS.App` HS.List quotedRemoteFuns

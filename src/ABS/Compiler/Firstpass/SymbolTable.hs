@@ -115,8 +115,8 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                                                 M.empty) -- no super interfaces
                                                             sureExported)
 
-            f (DClass (U (_, s)) _ _ _) = insertDup (SN s Nothing) 
-                                                            (SV Class sureExported)
+            f (DClassParImplements (U (_, s)) _ is _ _ _) = insertDup (SN s Nothing) 
+                                                            (SV (Class $ map showQU is) sureExported)
 
             f (DException (SinglConstrIdent (U (_, s)))) = insertDup (SN s Nothing) 
                                                                     (SV Exception sureExported)
@@ -125,9 +125,9 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
             f (DFunPoly _ i _ _ _) = f (DFun undefined i undefined undefined)
             f (DDataPoly i _ cs) = f (DData i cs)
             f (DTypePoly i _ _) = f (DType i undefined)
-            f (DClassPar i _ _ _ _) = f (DClass i undefined undefined undefined)
-            f (DClassImplements i _ _ _ _) = f (DClass i undefined undefined undefined)
-            f (DClassParImplements i _ _ _ _ _) = f (DClass i undefined undefined undefined)
+            f (DClass i _ _ _) = f (DClassParImplements i undefined [] undefined undefined undefined)
+            f (DClassPar i _ _ _ _) = f (DClassParImplements i undefined [] undefined undefined undefined)
+            f (DClassImplements i is _ _ _) = f (DClassParImplements i undefined is undefined undefined undefined)
             f (DExtends i _ ms') = f (DInterf i ms') -- the super interfaces are filled later by the function extends
             f (DException (ParamConstrIdent i _)) = f (DException (SinglConstrIdent i))               
 

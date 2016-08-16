@@ -16,7 +16,7 @@ import Data.Maybe (mapMaybe)
 import qualified Data.Map as M
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
-import Data.List (find)
+import Data.List (find, intersect)
 
 tDecl :: (?absFileName::String, ?st::SymbolTable) => ABS.Decl -> [HS.Decl]
 
@@ -151,11 +151,11 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
         self' <- I'.getSelfPid
         newCogSleepTable' <- I'.liftIO (I'.newIORef [])
         newCogMailBox' <- I'.liftIO I'.newTQueueIO
-        newCogCounter' <- I'.liftIO (I'.newIORef 1)
+        newCogCounter' <- I'.liftIO (I'.newIORef 2)
         let newCog' = Cog' newCogSleepTable' newCogMailBox' self' newCogCounter'
         newObj'Contents <- I'.liftIO (I'.newIORef ($smartApplied))
-        let newObj' = Obj' newObj'Contents newCog' 0
-        init'C newObj'
+        let newObj' = Obj' newObj'Contents newCog' 1
+        $(HS.Var $ HS.UnQual $ HS.Ident $ "init'" ++ clsName) newObj'
         I'.evalContT =<< I'.receiveWait
                     [ I'.match I'.unClosure
                     , I'.matchSTM (I'.readTQueue newCogMailBox') I'.pure
@@ -305,13 +305,44 @@ tDecl (ABS.DException constr) =
 
 -- Interfaces
 tDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (mkLoc ipos) 
-        (map (\ qtyp -> HS.ClassA (HS.UnQual $ HS.Ident $ showQU qtyp ++ "'") [HS.TyVar (HS.Ident "a")]) extends) -- super-interfaces
+        (if null extends
+         then [HS.ClassA (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Typeable") [HS.TyVar $ HS.Ident "a"]]
+         else map (\ qtyp -> HS.ClassA (HS.UnQual $ HS.Ident $ showQU qtyp ++ "'") [HS.TyVar (HS.Ident "a")]) extends) -- super-interfaces
         (HS.Ident $ tname ++ "'") -- name of interface
         [HS.UnkindedVar (HS.Ident "a")] -- all interfaces have kind * -> *
         []
         (map tMethSig ms)
       : -- Existential Wrapper
       HS.DataDecl noLoc' HS.DataType [] (HS.Ident tname) [] [HS.QualConDecl noLoc' [HS.UnkindedVar $ HS.Ident "a"] [HS.ClassA (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyVar (HS.Ident "a")]] (HS.ConDecl (HS.Ident tname) [HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a")])] []
+      : -- the Serializable Existential Wrapper 
+      HS.DataDecl noLoc' HS.DataType [] (HS.Ident $ tname ++ "'Get") [] [HS.QualConDecl noLoc' [HS.UnkindedVar $ HS.Ident "a"] [HS.ClassA (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyVar (HS.Ident "a")]] (HS.ConDecl (HS.Ident $ tname ++ "'Get") [HS.TyApp (HS.TyCon $ HS.Qual (HS.ModuleName "I'") $ HS.Ident "Get") $ HS.TyParen $ HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a")])] []
+      : -- the Serializable-Interface Table
+      (let subInterfs = map (\ (SN s _) -> s) $ M.keys $ M.filter (\case
+                                    SV (Interface _ supers) _ -> tname `elem` map (\ (SN s _) -> s) (M.keys supers)
+                                    _ -> False) ?st  -- TODO: this could be done better in FirstPass
+           implementingClasses = map (\ (SN s _) -> s) $ M.keys $ M.filterWithKey (\case
+                                                    SN s Nothing -> \case 
+                                                                      SV (Class directImpls) _ -> not (null $ intersect (tname:subInterfs) directImpls)
+                                                                      _ -> False
+                                                    _ -> const False 
+                                                 ) ?st    -- TODO: currently only checks for locally defined classes
+           tableEntries = HS.List $ map (\ clsName ->
+                    let clsType = HS.TyCon $ HS.UnQual $ HS.Ident clsName
+                    in [hs|(I'.fingerprint (I'.undefined :: Obj' ((clsType))), $(HS.Var $ HS.UnQual $ HS.Ident $ tname ++ "'Get") (I'.get :: I'.Get (Obj' ((clsType)))))|]
+                ) ("Null'" : implementingClasses)
+       in [dec|__tableName__ = I'.fromList $tableEntries|])
+      : -- Binary instance for the wrapper
+      HS.InstDecl noLoc' Nothing [] [] (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Binary") [HS.TyCon $ HS.UnQual $ HS.Ident $ tname]
+            [ HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident "put") [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PVar $ HS.Ident "a"]] Nothing 
+              (HS.UnGuardedRhs [hs|do
+                                    I'.put (I'.encodeFingerprint (I'.fingerprint a))
+                                    I'.put a|]) Nothing])
+            , HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident "get") [] Nothing 
+              (HS.UnGuardedRhs [hs|do
+                                    fp'<-I'.get 
+                                    case I'.lookup (I'.decodeFingerprint fp') $(HS.Var $ HS.UnQual $ HS.Ident tableName) of 
+                                      Just (__getCon__) -> $(HS.Var $ HS.UnQual $ HS.Ident tname) <$!> someget' 
+                                      Nothing -> I'.error "Binary Foo: fingerprint unknown"|]) Nothing])]
       : -- Show instance for the wrapper
       HS.InstDecl noLoc' Nothing [] [] (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show") [HS.TyCon $ HS.UnQual $ HS.Ident $ tname]
             [HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident "show") [HS.PWildCard] Nothing (HS.UnGuardedRhs $ HS.Lit $ HS.String tname) Nothing])]
@@ -343,7 +374,12 @@ tDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (mkLoc ipos)
       : -- Sub instances of all direct AND indirect supertypes
       generateSubForAllSupers
 
+      ++ -- generate remote wrappers for all direct methods
+      generateRemoteWrappedMethods
+
     where
+    tableName = "stable'" ++ tname
+    getCon = tname ++ "'Get someget'" -- hse-qq bad trick
     -- method_signature :: args -> Obj a (THIS) -> (res -> ABS ()) -> ABS ()
     tMethSig :: ABS.MethSig -> HS.ClassDecl
     tMethSig (ABS.MethSig _ retTyp (ABS.L (mpos,mname)) params) = 
@@ -369,5 +405,15 @@ tDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (mkLoc ipos)
                        ])
                       (M.keys all_extends)
                      _ -> error "development error at firstpass"
-                    
-    
+
+    generateRemoteWrappedMethods :: [HS.Decl]
+    generateRemoteWrappedMethods = map (\ (ABS.MethSig _ _ (ABS.L (_,mStr)) fParams) -> 
+      let pNames = map (\ (ABS.FormalPar _ (ABS.L (_,pStr))) -> HS.Ident pStr) fParams
+          mApplied = foldl (\ acc pName -> HS.App acc $ HS.Var $ HS.UnQual pName)
+                      (HS.Var $ HS.UnQual $ HS.Ident mStr) (pNames ++ [HS.Ident "this"])
+      in HS.FunBind [HS.Match noLoc' (HS.Ident $ mStr ++ "Remote'") 
+          [HS.PTuple HS.Boxed $ map HS.PVar pNames
+                                ++ [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PVar $ HS.Ident "this"]]]
+          Nothing
+          (HS.UnGuardedRhs mApplied)
+          Nothing ] ) ms
