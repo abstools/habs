@@ -1803,11 +1803,12 @@ depends :: (?fields::ScopeLVL, ?st::SymbolTable)
         => [ABS.PureExp]
         -> BlockScope ([ABS.L], [ABS.L], Bool)
 depends pexps = do
-  (localsMany,fieldsMany,hasForeignsMany) <- unzip3 <$> mapM depend pexps
-  pure (concat localsMany, concat fieldsMany, null (concat localsMany) && not (or hasForeignsMany)) where
-
- depend e = runReader (depend' e ([],[],False)) . M.unions . init <$> get
-    
+  (formalParams, localVars) <- getFormalLocal
+  let fields' = ?fields in 
+    let ?fields = fields' `M.difference` formalParams in -- remove any fields that are shadowed by formalparams
+     let (localsMany,fieldsMany,hasForeignsMany) = unzip3 (map (\ e -> runReader (depend' e ([],[],False)) localVars) pexps)
+      in pure (concat localsMany, concat fieldsMany, null (concat localsMany) && not (or hasForeignsMany)) where
+  
  depend' pexp (rlocal,rfields,hasForeigns) = do
   scope <- ask
   case pexp of
