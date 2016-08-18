@@ -1574,7 +1574,7 @@ tEffExp _ (ABS.ThisSyncMethCall (ABS.L (_,mname)) args) _ = do
                                               args) formalParams
          in [hs|(this <..>) =<< I'.lift $(maybeThis fields mapplied)|]
 
-tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
+tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = let op = HS.Var $ HS.UnQual $ HS.Symbol $ if isAlone then "<!!>" else "<!>"in case pexp of
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,fields,onlyPureDeps) <- depends args
@@ -1584,16 +1584,12 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
                                                  (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                  (maybeMangleCall mname)
                                                  args) formalParams
-            in maybeThis fields $ if isAlone 
-                                  then [hs|(this <!!> $mapplied)|]
-                                  else [hs|(this <!> $mapplied)|]
+            in maybeThis fields [hs|$op this $mapplied|]
       else let mapplied = runReader (let ?vars = localVars in foldlM
                                               (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
                                               ((\ e-> [hs|I'.pure $e|]) (maybeMangleCall mname))
                                               args) formalParams
-           in if isAlone 
-              then [hs|(this <!!>) =<< $(maybeThis fields mapplied)|]
-              else [hs|(this <!>) =<< $(maybeThis fields mapplied)|]
+           in [hs|$op this =<< $(maybeThis fields mapplied)|]             
   ABS.EVar ident@(ABS.L (_,calleeVar)) -> do
     (formalParams, localVars) <- getFormalLocal
     scopeLevels <- get
@@ -1607,22 +1603,23 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
             then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                          (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                          (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
-                     mwrapped = HS.Lambda (mkLoc p) [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] $ if isAlone
-                                                                                               then [hs|(obj' <!!> $mapplied)|] -- optimized, fire&forget
-                                                                                               else [hs|(obj' <!> $mapplied)|]
+                     closureFun = HS.SpliceExp $ HS.ParenSplice $ [hs|I'.mkClosure|] `HS.App` (HS.VarQuote $ HS.UnQual $ HS.Ident $ mname ++ "Remote'")
+                     closureArgs = HS.Tuple HS.Boxed $ runReader (let ?tyvars = [] in mapM tPureExp args) formalParams ++ [[hs|obj''|]]
+                     mwrapped = HS.Lambda (mkLoc p) [HS.PAsPat (HS.Ident "obj''") $ HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] 
+                                        [hs|if I'.processNodeId(pid' this) == I'.processNodeId(pid' obj') 
+                                            then I'.liftIO ($op obj' $mapplied)
+                                            else I'.send (pid' obj') ($closureFun $closureArgs)|]
                  in if ident `M.member` formalParams
                     then [hs|($(maybeThis fields mwrapped)) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
-                    else [hs|($(maybeThis fields mwrapped)) =<< (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))|]
+                    else [hs|($(maybeThis fields mwrapped)) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))|]
             else let mapplied = runReader (let ?vars = localVars in foldlM
                                                     (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
                                                     [hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname)|]                                                    
                                                     args) formalParams
-                     mwrapped = HS.Lambda (mkLoc p) [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] $ if isAlone
-                                                                                                 then [hs|(obj' <!!>) =<< $mapplied|]
-                                                                                                 else [hs|(obj' <!>) =<< $mapplied|]
+                     mwrapped = HS.Lambda (mkLoc p) [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] $ fromIO $ [hs|$op obj' =<< $mapplied|]
                  in if ident `M.member` formalParams
                     then [hs|($(maybeThis fields mwrapped)) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
-                    else [hs|($(maybeThis fields mwrapped)) =<< (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))|]
+                    else [hs|($(maybeThis fields mwrapped)) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))|]
       Just _ ->  errorPos p "caller variable not of interface type"
       Nothing -> if ident `M.member` ?fields
                 then tEffExp a (ABS.AsyncMethCall (ABS.EField ident) (ABS.L (p,mname)) args) isAlone -- rewrite it to this.var
@@ -1639,17 +1636,13 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
             then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                          (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                          (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
-                     mwrapped = HS.Lambda (mkLoc p) [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] $ if isAlone
-                                                                                                  then [hs|(obj' <!!> $mapplied)|]
-                                                                                                  else [hs|(obj' <!> $mapplied)|]
+                     mwrapped = HS.Lambda (mkLoc p) [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs|($op obj' $mapplied)|]
                  in [hs|(\ this'' -> $mwrapped ($(fieldFun ident) this'')) =<< I'.readIORef this'|]
             else let mapplied = runReader (let ?vars = localVars in foldlM
                                                     (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
                                                     [hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname)|]                                                    
                                                     args) formalParams
-                     mwrapped = HS.Lambda (mkLoc p) [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] $ if isAlone
-                                                                                                  then [hs|(obj' <!!>) =<< $mapplied|]
-                                                                                                  else [hs|(obj' <!>) =<< $mapplied|]
+                     mwrapped = HS.Lambda (mkLoc p) [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] [hs|$op obj' =<< $mapplied|]
                  in [hs|(\ this'' -> $mwrapped ($(fieldFun ident) this'')) =<< I'.readIORef this'|]
       Just _ -> errorPos p "caller field not of interface type"
       Nothing -> errorPos p "no such field"

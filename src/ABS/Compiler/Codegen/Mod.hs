@@ -143,7 +143,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Distributed.Process" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Process", HS.IVar $ HS.Ident "liftIO", HS.IVar $ HS.Ident "receiveWait", HS.IVar $ HS.Ident "match", HS.IVar $ HS.Ident "matchSTM", HS.IVar $ HS.Ident "unClosure", HS.IVar $ HS.Ident "getSelfPid"])
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Process", HS.IVar $ HS.Ident "liftIO", HS.IVar $ HS.Ident "receiveWait", HS.IVar $ HS.Ident "match", HS.IVar $ HS.Ident "matchSTM", HS.IVar $ HS.Ident "unClosure", HS.IVar $ HS.Ident "getSelfPid", HS.IVar $ HS.Ident "processNodeId", HS.IVar $ HS.Ident "send"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Distributed.Process.Closure" 
@@ -306,6 +306,6 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
 
     tMain :: (?st::SymbolTable) => ABS.MaybeBlock -> [HS.Decl]
     tMain ABS.NoBlock = []
-    tMain (ABS.JustBlock block) = [[dec|main = main_is' (\ this -> $(tMethod block [] M.empty "" [] False))|]] -- no params, no fields, empty class-name, no alone-methods
-
+    tMain (ABS.JustBlock block) = [[dec|main = main_is' __remoteTable (\ this -> $(tMethod block [] M.empty "" [] False))|]] -- no params, no fields, empty class-name, no alone-methods
+    -- TODO: __remoteTable should be instead (Module1.__remoteTable . Module2.__remoteTable) of all modules passed to habs
 
