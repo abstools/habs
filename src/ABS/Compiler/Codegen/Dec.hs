@@ -156,6 +156,7 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
         newObj'Contents <- I'.liftIO (I'.newIORef ($smartApplied))
         let newObj' = Obj' newObj'Contents newCog' 1
         $(HS.Var $ HS.UnQual $ HS.Ident $ "init'" ++ clsName) newObj'
+        I'.liftIO (I'.modifyMVar_ foreignStore' (I'.pure . I'.insert (self',1) (AnyObj' newObj')))
         I'.evalContT =<< I'.receiveWait
                     [ I'.match I'.unClosure
                     , I'.matchSTM (I'.readTQueue newCogMailBox') I'.pure

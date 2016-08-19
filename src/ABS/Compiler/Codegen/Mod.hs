@@ -125,7 +125,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Concurrent.MVar" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "isEmptyMVar", HS.IVar $ HS.Ident "readMVar"])
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "isEmptyMVar", HS.IVar $ HS.Ident "readMVar", HS.IVar $ HS.Ident "modifyMVar_"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Exception" 
@@ -181,7 +181,13 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importAs = Just (HS.ModuleName "I'")
                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "fromList", HS.IVar $ HS.Ident "lookup"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }                                         
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Map.Strict" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "insert"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }                                                         
   ]
   -- TRANSLATED IMPORTS OF THE ABS-PROGRAM
   ++ concatMap tImport imports
