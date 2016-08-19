@@ -1598,12 +1598,14 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = let op = HS.
           (_,fields,onlyPureDeps) <- depends args
           let (prefix, iident) = splitQU qtyp
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
+              closureFun = HS.SpliceExp $ HS.ParenSplice $ [hs|I'.mkClosure|] `HS.App` 
+                              (HS.VarQuote $ HS.UnQual $ HS.Ident $ mname ++ "Remote'")
           pure $ maybeLift $ 
             if onlyPureDeps
             then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                          (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                          (HS.Var $ HS.UnQual $ HS.Ident mname) args) formalParams
-                     closureFun = HS.SpliceExp $ HS.ParenSplice $ [hs|I'.mkClosure|] `HS.App` (HS.VarQuote $ HS.UnQual $ HS.Ident $ mname ++ "Remote'")
+                     
                      closureArgs = HS.Tuple HS.Boxed $ runReader (let ?tyvars = [] in mapM tPureExp args) formalParams ++ [[hs|obj''|]]
                      mwrapped = HS.Lambda (mkLoc p) [HS.PAsPat (HS.Ident "obj''") $ HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] 
                                         [hs|if I'.processNodeId(pid' this) == I'.processNodeId(pid' obj') 
@@ -1616,7 +1618,14 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = let op = HS.
                                                     (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
                                                     [hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname)|]                                                    
                                                     args) formalParams
-                     mwrapped = HS.Lambda (mkLoc p) [HS.PApp iname [HS.PVar $ HS.Ident "obj'"]] $ fromIO $ [hs|$op obj' =<< $mapplied|]
+                     closureArgs = runReader (let ?vars = localVars in foldlM
+                                                   (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
+                                                   [hs|I'.pure $(HS.Var $ HS.Special $ HS.TupleCon HS.Boxed $ length args + 1)|]
+                                                   args) formalParams
+                     mwrapped = HS.Lambda (mkLoc p) [HS.PAsPat (HS.Ident "obj''") $ HS.PApp iname [HS.PVar $ HS.Ident "obj'"]]
+                                        [hs|if I'.processNodeId(pid' this) == I'.processNodeId(pid' obj') 
+                                            then I'.liftIO ($op obj' =<< $mapplied)
+                                            else I'.send (pid' obj') =<< I'.liftIO ($closureFun <$!> ($closureArgs <*> I'.pure obj''))|]
                  in if ident `M.member` formalParams
                     then [hs|($(maybeThis fields mwrapped)) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
                     else [hs|($(maybeThis fields mwrapped)) =<< I'.liftIO (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))|]
