@@ -10,7 +10,7 @@ homepage: http://abs-models.org
 bug-reports: https://github.com/abstools/habs/issues
 
 stability: provisional
-tested-with: GHC == 7.10.1, GHC == 7.10.2, GHC == 7.10.3
+tested-with: GHC == 7.10.1, GHC == 7.10.2, GHC == 7.10.3, GHC == 8.0.1
 build-type: Simple
 cabal-version: >= 1.8
 
@@ -36,7 +36,7 @@ executable habs
     base >= 4.8 && < 5,
     habs-parser,
     -- for outputting a Haskell AST
-    haskell-src-exts >= 1.17.0,
+    haskell-src-exts >= 1.17.0 && < 1.18.0,
     haskell-src-exts-qq == 0.7,
     -- for intermediate datastructures (e.g. symboltable)
     containers,

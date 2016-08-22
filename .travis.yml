@@ -15,17 +15,20 @@ matrix:
   include:
     - env: CABALVER=1.22 GHCVER=7.10.1
       compiler: ": #GHC 7.10.1"
-      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.1,happy-1.19.4], sources: [hvr-ghc]}}
+      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.1,happy-1.19.5], sources: [hvr-ghc]}}
     - env: CABALVER=1.22 GHCVER=7.10.2
       compiler: ": #GHC 7.10.2"
-      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.2,happy-1.19.4], sources: [hvr-ghc]}}
+      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.2,happy-1.19.5], sources: [hvr-ghc]}}
     - env: CABALVER=1.22 GHCVER=7.10.3
       compiler: ": #GHC 7.10.3"
-      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.3,happy-1.19.4,hscolour], sources: [hvr-ghc]}}
+      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.3,happy-1.19.5,hscolour], sources: [hvr-ghc]}}
+    - env: CABALVER=1.24 GHCVER=8.0.1
+      compiler: ": #GHC 8.0.1"
+      addons: {apt: {packages: [cabal-install-1.24,ghc-8.0.1,happy-1.19.5,hscolour], sources: [hvr-ghc]}}
 
 before_install:
  - unset CC
- - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:/opt/happy/1.19.4/bin:$PATH
+ - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:/opt/happy/1.19.5/bin:$PATH
 
 install:
  - cabal --version
@@ -85,7 +88,7 @@ script:
    (cd dist && cabal install --force-reinstalls "$SRC_TGZ")
 
 after_script:
-  - if [ "$TRAVIS_BRANCH" == "master" -a "$TRAVIS_PULL_REQUEST" == "false" -a "$GHCVER" == "7.10.3" ]; 
+  - if [ "$TRAVIS_BRANCH" == "master" -a "$TRAVIS_PULL_REQUEST" == "false" -a "$GHCVER" == "8.0.1" ]; 
     then
        cabal haddock --executables --hyperlink-source --html-location='http://hackage.haskell.org/packages/archive/$pkg/latest/doc/html'; 
        cp dist/test-results.html dist/doc/html/habs/habs/;
