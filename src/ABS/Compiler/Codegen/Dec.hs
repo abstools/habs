@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, QuasiQuotes, LambdaCase #-}
+{-# LANGUAGE CPP, ImplicitParams, QuasiQuotes, LambdaCase #-}
 module ABS.Compiler.Codegen.Dec where
 
 import ABS.Compiler.Utils
@@ -34,7 +34,12 @@ tDecl (ABS.DClassImplements tident imps fdecls maybeBlock mdecls) = tDecl (ABS.D
 tDecl (ABS.DFunPoly fReturnTyp (ABS.L (fpos,fid)) tyvars params body) = [
         -- note: trick because of bug in ghc-7.10 https://ghc.haskell.org/trac/ghc/ticket/10519
         -- in ghc>=8 the typeclass wildcard should be the context after forall typevars.
-        HS.TypeSig noLoc' [HS.Ident fid] (HS.TyForall Nothing [HS.WildCardA Nothing] $ HS.TyForall (Just $ map (\(ABS.U (_, tident)) -> HS.UnkindedVar $ HS.Ident $ headToLower tident) tyvars) [] $ 
+        -- NB: we assume here that the habs transcompiler is compiled with the same GHC compiler as the ABS executable itself
+#if MIN_VERSION_GLASGOW_HASKELL(8,0,1,0)
+        HS.TypeSig noLoc' [HS.Ident fid] (HS.TyForall (Just $ map (\(ABS.U (_, tident)) -> HS.UnkindedVar $ HS.Ident $ headToLower tident) tyvars) [HS.WildCardA Nothing] $
+#else
+        HS.TypeSig noLoc' [HS.Ident fid] (HS.TyForall Nothing [HS.WildCardA Nothing] $ HS.TyForall (Just $ map (\(ABS.U (_, tident)) -> HS.UnkindedVar $ HS.Ident $ headToLower tident) tyvars) [] $
+#endif 
           foldr  -- function application is right-associative
           (\ (ABS.FormalPar ptyp _) acc -> tTypeOrTyVar tyvars ptyp `HS.TyFun` acc) 
           (tTypeOrTyVar tyvars fReturnTyp) params)
