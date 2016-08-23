@@ -48,7 +48,8 @@ tPureExp (ABS.ECase ofE branches) = do
   HS.Case tof <$>
     mapM (\ (ABS.ECaseBranch pat pexp) -> do
             texp <- tPureExp pexp
-            pure $ HS.Alt noLoc' (tPattern pat) (HS.UnGuardedRhs texp) Nothing
+            (tpat,tguards) <- tPattern pat
+            pure $ HS.Alt noLoc' tpat ((if null tguards then HS.UnGuardedRhs else (HS.GuardedRhss . pure . HS.GuardedRhs noLoc' tguards)) texp) Nothing
          ) branches
 
 tPureExp (ABS.EFunCall ql args) = HS.Paren <$> foldlM

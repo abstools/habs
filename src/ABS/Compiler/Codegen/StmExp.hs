@@ -48,7 +48,8 @@ tStmExp (ABS.ECase ofE branches) = do
   tcase <- HS.Case (HS.Var $ HS.UnQual $ HS.Ident "of'") <$>
           mapM (\ (ABS.ECaseBranch pat pexp) -> do
                   texp <- tStmExp pexp
-                  pure $ HS.Alt noLoc' (tPattern pat) (HS.UnGuardedRhs texp) Nothing
+                  (tpat,_) <- tPattern pat
+                  pure $ HS.Alt noLoc' tpat (HS.UnGuardedRhs texp) Nothing
                ) branches
   pure $ HS.Do [ HS.Generator noLoc' (HS.PVar $ HS.Ident "of'") tof
                , HS.Qualifier tcase

@@ -1242,7 +1242,7 @@ tStm (ABS.AnnStm _ (ABS.SCase pexp branches)) = do
                                                                  <$> tStm (case branchStm of
                                                                               block@(ABS.AnnStm _ (ABS.SBlock _)) -> block
                                                                               stm -> ABS.AnnStm [] (ABS.SBlock [stm])) -- if single statement, wrap it in a new DO-scope
-                                                         pure $ HS.Alt noLoc' (tPattern pat) (HS.UnGuardedRhs tstm) Nothing
+                                                         pure $ HS.Alt noLoc' (fst $ runReader (tPattern pat) M.empty) (HS.UnGuardedRhs tstm) Nothing
                     ) branches
   pure $ if onlyPureDeps
          then let tpred = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
@@ -1362,7 +1362,7 @@ tStm (ABS.AnnStm _ (ABS.STryCatchFinally tryStm branches mfinally)) = do
                                                  ]
                                 _ -> [HS.App [hs|Handler'|] $ HS.LCase [
                                         -- wrap the normal returned expression in a just
-                                        HS.Alt noLoc' (tPattern pat) (HS.UnGuardedRhs [hs|Just ($tbstm)|]) Nothing
+                                        HS.Alt noLoc' (fst $ runReader (tPattern pat) M.empty) (HS.UnGuardedRhs [hs|Just ($tbstm)|]) Nothing
                                         -- pattern match fail, return nothing
                                       , HS.Alt noLoc' HS.PWildCard (HS.UnGuardedRhs [hs|Nothing|]) Nothing]]                                 
                     ) branches
