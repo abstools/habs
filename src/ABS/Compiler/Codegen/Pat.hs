@@ -16,10 +16,10 @@ import Control.Exception (assert)
 
 
 -- | Translating a pattern of an ABS case-branch in pure case-pattern-matching
-tPattern :: (?fields::ScopeLVL) => ABS.Pattern -> LetScope (HS.Pat, [HS.Stmt])
+tPattern :: (?cname::String, ?fields::ScopeLVL) => ABS.Pattern -> LetScope (HS.Pat, [HS.Stmt])
 tPattern (ABS.PVar i@(ABS.L (_,pid))) = do
   scope <- ask
-  pure $ if i `member` scope || i `member` ?fields
+  pure $ if i `member` scope || (i `member` ?fields && not (null ?cname))
          then (HS.PVar $ HS.Ident $ pid ++ "'", [HS.Qualifier $ HS.InfixApp (HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'")
                                                                             (HS.QVarOp $ HS.UnQual $ HS.Symbol "==")
                                                                             (HS.Var $ HS.UnQual $ HS.Ident pid)])
