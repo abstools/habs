@@ -74,8 +74,7 @@ test-suite golden
   main-is: golden.hs
   build-depends:
     base >= 4.8 && < 5,
-    -- temporary fix because of broken tasty-golden
-    tasty < 0.11.0.4, 
+    tasty, 
     tasty-hunit,
     tasty-program,
     tasty-golden,
