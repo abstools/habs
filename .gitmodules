@@ -4,6 +4,7 @@
 [submodule "habs-runtime"]
 	path = habs-runtime
 	url = https://github.com/abstools/habs-runtime
+  branch = sim
 [submodule "habs-stdlib"]
 	path = habs-stdlib
 	url = https://github.com/abstools/habs-stdlib

@@ -19,6 +19,7 @@ import Control.Monad.Trans.Reader (runReader, ask, local)
 import qualified Data.Map as M
 import Data.Foldable (foldlM)
 import Data.List (nub, find)
+import Data.Maybe (isJust)
 
 import Control.Exception (assert)
 #define todo assert False (error "not implemented yet")
@@ -39,7 +40,8 @@ tMethod body formalParams fields cname cAloneMethods isInit =
                                 _ -> tstms)
   -- the state is a scope-stack
   [ M.empty -- level 2. new empty scope
-  , M.fromList $ map (\ (ABS.FormalPar t i) -> (i,t)) formalParams  -- level 1. passed formal params
+  , M.fromList $ (ABS.L ((0,0), "thisDC"), ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"DC")) -- treat thisDC as a formalpar for easier codegen
+                 : map (\ (ABS.FormalPar t i) -> (i,t)) formalParams  -- level 1. passed formal params
   ]
 
 ---------------- LOCAL VARIABLE ASSIGNMENT
@@ -59,11 +61,30 @@ tAss _ _ (ABS.L (_,n)) (ABS.ExpP pexp) = do
     else let texp = runReader (let ?vars = localVars in tStmExp pexp) formalParams
          in [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< $(maybeThis fields texp)|]
 
-tAss as (ABS.TSimple qu) (ABS.L (_,n)) (ABS.ExpE (ABS.New qcname args)) = case find (\case 
-                ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
-                _ -> False
-            ) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+tAss as (ABS.TSimple qu) (ABS.L (_,n)) (ABS.ExpE (ABS.New qcname args)) = case find (\case
+                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) (ABS.ELit ABS.LThisDC)) -> False -- ignore [DC:thisDC]
+                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
+                      _ -> False) as of
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
+  (formalParams, localVars) <- getFormalLocal
+  (_,fields,onlyPureDeps) <- depends (pExp:args)
+  let (q, cname) = splitQU qcname
+      smartCon = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "smart'" ++ cname
+      initFun = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init'" ++ cname
+      wrapDC e = let tExp = runReader (let ?vars = localVars in tStmExp pExp) formalParams
+                 in [hs|(\ new'DC -> $e) =<< $tExp|]
+  pure $ maybeLift $ maybeThis fields $ wrapDC $
+    if onlyPureDeps
+    then let smartApplied = runReader (let ?tyvars = [] in foldlM
+                                                        (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                        smartCon
+                                                        args) formalParams
+         in [hs|((I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< new new'DC $initFun $smartApplied)|]
+    else let smartApplied = runReader (let ?vars = localVars in foldlM
+                                                   (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
+                                                   [hs|I'.pure $smartCon|]
+                                                   args) formalParams
+         in [hs|(I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< (new new'DC $initFun =<< $smartApplied)|]
  _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
@@ -76,12 +97,12 @@ tAss as (ABS.TSimple qu) (ABS.L (_,n)) (ABS.ExpE (ABS.New qcname args)) = case f
                                                          (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                          smartCon
                                                          args) formalParams
-         in maybeThis fields [hs|((I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< new $initFun $smartApplied)|]
+         in maybeThis fields [hs|((I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< new thisDC $initFun $smartApplied)|]
     else let smartApplied = runReader (let ?vars = localVars in foldlM
                                                (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
                                                [hs|I'.pure $smartCon|]
                                                args) formalParams
-         in [hs|(I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< (new $initFun =<< $(maybeThis fields smartApplied))|]
+         in [hs|(I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< (new thisDC $initFun =<< $(maybeThis fields smartApplied))|]
 tAss _ (ABS.TPoly _ _) (ABS.L (p,_)) (ABS.ExpE (ABS.New _ _)) = errorPos p "Interface cannot have polymorphic type"
 tAss _ ABS.TInfer (ABS.L (p, _)) (ABS.ExpE (ABS.New _ _)) = errorPos p "Cannot infer interface-types"
 
@@ -108,6 +129,7 @@ tAss _ ABS.TInfer (ABS.L (p, _)) (ABS.ExpE (ABS.NewLocal _ _)) = errorPos p "Can
 
 tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
   case pexp of
+   ABS.ELit ABS.LThisDC -> errorPos p "synchronous call on DC not allowed"
    ABS.EVar ident@(ABS.L (_,calleeVar)) -> do
     (formalParams, localVars) <- getFormalLocal
     scopeLevels <- get
@@ -183,6 +205,7 @@ tAss _ _ (ABS.L (_,n)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) args)) 
 
 tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
  case pexp of
+  ABS.ELit ABS.LThisDC -> tAss a typ i (ABS.ExpE (ABS.AsyncMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args))
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,fields,onlyPureDeps) <- depends args
@@ -255,6 +278,7 @@ tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) a
 
 tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args)) =
  case pexp of
+  ABS.ELit ABS.LThisDC -> tAss a typ i (ABS.ExpE (ABS.AwaitMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args))
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,fields,onlyPureDeps) <- depends args
@@ -381,11 +405,30 @@ tDecAss _ _ _ (ABS.ExpP pexp) = do
          in [hs|I'.newIORef =<< $(maybeThis fields texp)|]
 
 
-tDecAss as (ABS.TSimple qu) _ (ABS.ExpE (ABS.New qcname args)) = case find (\case 
-                ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
-                _ -> False
-            ) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+tDecAss as (ABS.TSimple qu) _ (ABS.ExpE (ABS.New qcname args)) = case find (\case
+                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) (ABS.ELit ABS.LThisDC)) -> False -- ignore [DC:thisDC]
+                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
+                      _ -> False) as of
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
+  (formalParams, localVars) <- getFormalLocal
+  (_,fields,onlyPureDeps) <- depends (pExp:args)
+  let (q, cname) = splitQU qcname
+      smartCon = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "smart'" ++ cname
+      initFun = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init'" ++ cname
+      wrapDC e = let tExp = runReader (let ?vars = localVars in tStmExp pExp) formalParams
+                 in [hs|(\ new'DC -> $e) =<< $tExp|]
+  pure $ maybeLift $ maybeThis fields $ wrapDC $
+    if onlyPureDeps
+    then let smartApplied = runReader (let ?tyvars = [] in foldlM
+                                                        (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                        smartCon
+                                                        args) formalParams
+         in [hs|((I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< new new'DC $initFun $smartApplied)|]
+    else let smartApplied = runReader (let ?vars = localVars in foldlM
+                                                   (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
+                                                   [hs|I'.pure $smartCon|]
+                                                   args) formalParams
+         in [hs|(I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< (new new'DC $initFun =<< $smartApplied)|]
  _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
@@ -398,12 +441,12 @@ tDecAss as (ABS.TSimple qu) _ (ABS.ExpE (ABS.New qcname args)) = case find (\cas
                                            (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                            smartCon
                                            args) formalParams
-         in maybeThis fields [hs|((I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< new $initFun $smartApplied)|]
+         in maybeThis fields [hs|((I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< new thisDC $initFun $smartApplied)|]
     else let smartApplied = runReader (let ?vars = localVars in foldlM
                                                (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
                                                [hs|I'.pure $smartCon|]
                                                args) formalParams
-         in [hs|(I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< (new $initFun =<< $(maybeThis fields smartApplied))|]
+         in [hs|(I'.newIORef . $(HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)) =<< (new thisDC $initFun =<< $(maybeThis fields smartApplied))|]
 tDecAss _ (ABS.TPoly _ _) (ABS.L (p,_)) (ABS.ExpE (ABS.New _ _)) = errorPos p "Interface cannot have polymorphic type"
 tDecAss _ ABS.TInfer (ABS.L (p, _)) (ABS.ExpE (ABS.New _ _)) = errorPos p "Cannot infer interface-types"
 
@@ -430,6 +473,7 @@ tDecAss _ ABS.TInfer (ABS.L (p, _)) (ABS.ExpE (ABS.NewLocal _ _)) = errorPos p "
 
 tDecAss a t i (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
   case pexp of
+   ABS.ELit ABS.LThisDC -> errorPos p "synchronous call on DC not allowed"
    ABS.EVar ident@(ABS.L (_, calleeVar)) -> do
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
     case typ of
@@ -504,6 +548,7 @@ tDecAss _ _ _ (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) args)) = do
 
 tDecAss a t i (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
  case pexp of
+  ABS.ELit ABS.LThisDC -> tDecAss a t i (ABS.ExpE (ABS.AsyncMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args))
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,fields,onlyPureDeps) <- depends args
@@ -620,8 +665,9 @@ tFieldAss :: (?absFileName::String, ?cAloneMethods::[String], ?cname::String, ?f
           -> ABS.L
           -> ABS.Exp
           -> BlockScope HS.Exp
-tFieldAss a (ABS.L (_, field)) (ABS.ExpE (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args)) = 
+tFieldAss a i@(ABS.L (_, field)) (ABS.ExpE (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args)) = 
  case pexp of
+  ABS.ELit ABS.LThisDC -> tFieldAss a i (ABS.ExpE (ABS.AwaitMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args))
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,_,onlyPureDeps) <- depends args
@@ -704,11 +750,31 @@ tFieldAss _ (ABS.L (_,field)) (ABS.ExpP pexp) = do
          in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) <$!> $texp) =<< I'.readIORef this')|]
   
 
-tFieldAss as i@(ABS.L (_,field)) (ABS.ExpE (ABS.New qcname args)) = case find (\case 
-                ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
-                _ -> False
-            ) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+tFieldAss as i@(ABS.L (_,field)) (ABS.ExpE (ABS.New qcname args)) = case find (\case
+                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) (ABS.ELit ABS.LThisDC)) -> False -- ignore [DC:thisDC]
+                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
+                      _ -> False) as of
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
+  (formalParams, localVars) <- getFormalLocal
+  (_,_,onlyPureDeps) <- depends (pExp:args)
+  let (q, cname) = splitQU qcname
+      smartCon = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "smart'" ++ cname
+      initFun = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init'" ++ cname
+      Just (ABS.TSimple qtyp) = M.lookup i ?fields 
+      recordUpdateCast = HS.RecUpdate [hs|this''|] [HS.FieldUpdate (HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname) [hs|$(HS.Var $ HS.UnQual $ HS.Ident $ showQU qtyp) v'|]]
+      tExp = runReader (let ?vars = localVars in tStmExp pExp) formalParams
+  pure $ maybeLift $
+    if onlyPureDeps
+    then let smartApplied = runReader (let ?tyvars = [] in foldlM
+                                                        (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                        smartCon
+                                                        args) formalParams
+         in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $recordUpdateCast) <$!> ((\ new'DC -> new new'DC $initFun $smartApplied) =<< $tExp)) =<< I'.readIORef this')|]
+    else let smartApplied = runReader (let ?vars = localVars in foldlM
+                                                   (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
+                                                   [hs|I'.pure $smartCon|]
+                                                   args) formalParams
+         in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $recordUpdateCast) <$!> ((\ new'DC -> new new'DC $initFun =<< $smartApplied) =<< $tExp)) =<< I'.readIORef this')|]
  _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,_,onlyPureDeps) <- depends args
@@ -723,12 +789,12 @@ tFieldAss as i@(ABS.L (_,field)) (ABS.ExpE (ABS.New qcname args)) = case find (\
                                                          (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                          smartCon
                                                          args) formalParams
-         in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $recordUpdateCast) <$!> new $initFun $smartApplied) =<< I'.readIORef this')|]
+         in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $recordUpdateCast) <$!> new thisDC $initFun $smartApplied) =<< I'.readIORef this')|]
     else let smartApplied = runReader (let ?vars = localVars in foldlM
                                                (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
                                                [hs|I'.pure $smartCon|]
                                                args) formalParams
-         in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $recordUpdateCast) <$!> (new $initFun =<< $smartApplied)) =<< I'.readIORef this')|]
+         in [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $recordUpdateCast) <$!> (new thisDC $initFun =<< $smartApplied)) =<< I'.readIORef this')|]
 
 tFieldAss _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.NewLocal qcname args)) = do
   (formalParams, localVars) <- getFormalLocal
@@ -754,6 +820,7 @@ tFieldAss _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.NewLocal qcname args)) = do
 
 tFieldAss a i@(ABS.L (_,field)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
   case pexp of
+   ABS.ELit ABS.LThisDC -> errorPos p "synchronous call on DC not allowed"
    ABS.EVar ident@(ABS.L (_,calleeVar)) -> do
     (formalParams, localVars) <- getFormalLocal
     scopeLevels <- get
@@ -837,6 +904,7 @@ tFieldAss _ (ABS.L (_,field)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) 
 
 tFieldAss a i@(ABS.L (_,field)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
  case pexp of
+  ABS.ELit ABS.LThisDC -> tFieldAss a i (ABS.ExpE (ABS.AsyncMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args))
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,_,onlyPureDeps) <- depends args
@@ -966,6 +1034,19 @@ tFieldAss _ (ABS.L (_,field)) (ABS.ExpE ABS.Readln) =
 tStm :: (?absFileName::String, ?cAloneMethods::[String], ?cname::String, ?fields::ScopeLVL, ?isInit::Bool, ?st::SymbolTable)
      => ABS.AnnStm
      -> BlockScope [HS.Stmt]
+
+-- add cost statements above the statement
+tStm (ABS.AnnStm as stmt) 
+  | any (\case ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"Cost")))) _) -> True; _ -> False) as = 
+    if ?isInit
+    then error "cost annotations not allowed inside init"
+    else do
+      let costExps = foldl (\ acc -> \case ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"Cost")))) pexp) -> pexp:acc; _ -> acc) [] as
+      trequest <- tStm $ ABS.AnnStm [] $ ABS.SExp $ ABS.ExpE $ 
+                  ABS.AwaitMethCall (ABS.ELit ABS.LThisDC) (ABS.L ((0,0),"request__")) [foldl1 ABS.EAdd costExps]
+      tstmt <- tStm $ ABS.AnnStm (filter (\case ABS.Ann(ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"Cost")))) pexp) -> False; _ -> True) as)
+                      stmt
+      return (trequest++tstmt)
 
 -- sdecass awaitmethcall has to be treated specially
 tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.L (p,n)) e@(ABS.ExpE (ABS.AwaitMethCall _ _ _)))) = do
@@ -1397,11 +1478,30 @@ tEffExp :: ( ?absFileName:: String
            -> ABS.EffExp 
            -> Bool 
            -> BlockScope HS.Exp
-tEffExp as (ABS.New qcname args) _ = case find (\case 
-                ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
-                _ -> False
-            ) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) _)) -> errorPos p "requires habs cloud compiler and runtime"
+tEffExp as (ABS.New qcname args) _ = case find (\case
+                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) (ABS.ELit ABS.LThisDC)) -> False -- ignore [DC:thisDC]
+                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
+                      _ -> False) as of
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
+  (formalParams, localVars) <- getFormalLocal
+  (_,fields,onlyPureDeps) <- depends (pExp:args)
+  let (q, cname) = splitQU qcname
+      smartCon = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "smart'" ++ cname
+      initFun = HS.Var $ (if null q then HS.UnQual else HS.Qual $ HS.ModuleName q) $ HS.Ident $ "init'" ++ cname
+      wrapDC e = let tExp = runReader (let ?vars = localVars in tStmExp pExp) formalParams
+                 in [hs|(\ new'DC -> $e) =<< $tExp|]
+  pure $ maybeLift $ maybeThis fields $ wrapDC $
+    if onlyPureDeps
+    then let smartApplied = runReader (let ?tyvars = [] in foldlM
+                                                        (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+                                                        smartCon
+                                                        args) formalParams
+         in [hs|new new'DC $initFun $smartApplied|]
+    else let smartApplied = runReader (let ?vars = localVars in foldlM
+                                                   (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
+                                                   [hs|I'.pure $smartCon|]
+                                                   args) formalParams
+         in [hs|new new'DC $initFun =<< $smartApplied|]
  _ -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
@@ -1414,12 +1514,12 @@ tEffExp as (ABS.New qcname args) _ = case find (\case
                                                         (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                                         smartCon
                                                         args) formalParams
-         in maybeThis fields [hs|new $initFun $smartApplied|]
+         in maybeThis fields [hs|new thisDC $initFun $smartApplied|]
     else let smartApplied = runReader (let ?vars = localVars in foldlM
                                                    (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
                                                    [hs|I'.pure $smartCon|]
                                                    args) formalParams
-         in [hs|new $initFun =<< $(maybeThis fields smartApplied)|]
+         in [hs|new thisDC $initFun =<< $(maybeThis fields smartApplied)|]
 
 tEffExp _ (ABS.NewLocal qcname args) _ = do
   (formalParams, localVars) <- getFormalLocal
@@ -1442,6 +1542,7 @@ tEffExp _ (ABS.NewLocal qcname args) _ = do
 
 
 tEffExp a (ABS.SyncMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
+  ABS.ELit ABS.LThisDC -> errorPos p "synchronous call to DC not allowed"
   ABS.EVar ident@(ABS.L (_,calleeVar)) -> do
     (formalParams, localVars) <- getFormalLocal
     scopeLevels <- get
@@ -1514,6 +1615,7 @@ tEffExp _ (ABS.ThisSyncMethCall (ABS.L (_,mname)) args) _ = do
          in [hs|(this <..>) =<< I'.lift $(maybeThis fields mapplied)|]
 
 tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
+  ABS.ELit ABS.LThisDC -> tEffExp a (ABS.AsyncMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args) isAlone
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,fields,onlyPureDeps) <- depends args
@@ -1597,6 +1699,23 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
   
 
 tEffExp a (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
+  ABS.ELit ABS.LThisDC -> tEffExp a (ABS.AwaitMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args) _isAlone
+  --ABS.ELit ABS.LThisDC -> do
+  --        (formalParams, localVars) <- getFormalLocal
+  --        (_,fields,onlyPureDeps) <- depends args
+  --        pure $
+  --          if onlyPureDeps
+  --          then let mapplied = runReader (let ?tyvars = [] in foldlM
+  --                                                       (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
+  --                                                       (maybeMangleCall mname)
+  --                                                       args) formalParams
+  --               in maybeThisLifted fields [hs|(\ (DC obj') -> awaitSugar' this (\ _ -> I'.pure ()) obj' ($mapplied)) thisDC|]
+  --          else let mapplied = runReader (let ?vars = localVars in foldlM
+  --                                                  (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
+  --                                                  ((\ e-> [hs|I'.pure $e|]) (maybeMangleCall mname))
+  --                                                  args) formalParams
+                     
+  --               in [hs|(\ (DC obj') -> awaitSugar' this (\ _ -> I'.pure ()) obj' =<< I'.lift $(maybeThis fields mapplied)) thisDC|]
   ABS.ELit ABS.LThis -> do
           (formalParams, localVars) <- getFormalLocal
           (_,fields,onlyPureDeps) <- depends args

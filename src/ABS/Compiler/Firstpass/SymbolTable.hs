@@ -95,7 +95,7 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
       -- | Only checks the in-module decls and builds an "unfinished" global symbol table
       localST :: Module -> SymbolTable
       localST (Module _ es _ decls _) = foldl (\ acc (AnnDecl _ d) -> f d acc) 
-                                 M.empty -- start with an empty symbol table
+                                 (M.singleton (SN "DC" Nothing) (SV (Interface ["request_"] M.empty) False)) -- start with an empty symbol table
                                  decls   -- traverse all the local declarations
           where
 
