@@ -133,7 +133,7 @@ tStmExp (ABS.ENeq left right) = tStmExp (ABS.ELogNeg $ ABS.EEq left right)
 
 -- -- be careful to parenthesize infix apps
 tStmExp (ABS.EOr l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs|((||) <$!> $tl <*> $tr)|]
-tStmExp (ABS.EAnd l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs|((^) <$!> $tl <*> $tr)|]
+tStmExp (ABS.EAnd l r)  = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs|((&&) <$!> $tl <*> $tr)|]
 tStmExp (ABS.ELt l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs|((<) <$!> $tl <*> $tr)|]
 tStmExp (ABS.ELe l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs|((<=) <$!> $tl <*> $tr)|]
 tStmExp (ABS.EGt l r)   = do tl <- tStmExp l;  tr <- tStmExp r; pure [hs|((>) <$!> $tl <*> $tr)|]
