@@ -11,7 +11,6 @@ import Language.Haskell.Exts.QQ (hs, dec, pat, ty)
 
 import Control.Applicative ((<|>))
 import Control.Monad.Trans.Reader (runReader)
-import Data.Foldable (foldlM)
 import Data.Maybe (mapMaybe)
 import qualified Data.Map as M
 import qualified ABS.AST as ABS
@@ -46,7 +45,7 @@ tDecl (ABS.DFunPoly fReturnTyp (ABS.L (fpos,fid)) tyvars params body) = [
       , HS.FunBind [HS.Match (mkLoc fpos) (HS.Ident fid) (map (\(ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar $ HS.Ident pid) params)
                           Nothing (HS.UnGuardedRhs $
                                          (let ?tyvars = tyvars
-                                              ?cname = []
+                                              ?cname = ""
                                               ?fields = M.empty
                                           in tFunBody body params)
                                    )  Nothing ] ]
@@ -54,80 +53,31 @@ tDecl (ABS.DFunPoly fReturnTyp (ABS.L (fpos,fid)) tyvars params body) = [
 
 
 -- Classes
-tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit rdecls) = 
+tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecls mInit rdecls) = 
 
   -- An ADT-record which contains the fields of the class
   HS.DataDecl (mkLoc cpos) HS.DataType [] (HS.Ident clsName) [] 
         [HS.QualConDecl noLoc' [] [] $ HS.RecDecl (HS.Ident clsName) 
-                    (foldl (\ acc ((ABS.L (_,i)), t) ->
+                    (foldr (\ ((ABS.L (_,i)), t) acc ->
                       (case t of
                         ABS.TPoly (ABS.U_ (ABS.U (_,"Fut")))  _ -> (([HS.Ident $  i ++ "''" ++ clsName], [ty|[I'.ThreadId]|]) :) -- an extra field holding the threadids
                         _ -> id)
                       (([HS.Ident $  i ++ "'" ++ clsName], tType t): acc) -- TODO: bang if prim type
                      ) [] $ M.toAscList fields)] []
 
-  : -- A smart-constructor for pure fields
-  HS.FunBind [HS.Match noLoc' (HS.Ident $ "smart'" ++ clsName)
+  :
+  [HS.TypeSig noLoc' [HS.Ident $ "smart'" ++ clsName]
+    (foldr (\ (ABS.FormalPar t _) acc -> tType t `HS.TyFun` acc) (HS.TyCon $ HS.UnQual $ HS.Ident clsName) cparams) 
+  ,HS.FunBind [HS.Match noLoc' (HS.Ident $ "smart'" ++ clsName)
     -- the class params serve as input-args to the smart constructor
-    (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) cparams) Nothing 
+    (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident $ pid ++ "'this")) cparams) Nothing 
     -- rhs
-    (HS.UnGuardedRhs $ HS.RecConstr (HS.UnQual $ HS.Ident clsName) $
-     let ?tyvars = []
-         ?cname = clsName
-         ?fields = fields
-     in 
-       -- fields take their param value
-       (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.FieldUpdate (HS.UnQual $ HS.Ident $ pid ++ "'" ++ clsName) (HS.Var $ HS.UnQual $ HS.Ident pid)) cparams)
-       ++
-       -- rest will be initialized by the class body, or default-initialized (futures, foreign, interfaces)
-       runReader (foldlM (\ acc -> \case
-                           
-                   -- Field f = val;
-                   ABS.FieldAssignClassBody t (ABS.L (_, fid)) pexp -> do 
-                    texp <- tPureExp pexp
-                    pure $ (case t of
-                              ABS.TPoly (ABS.U_ (ABS.U (_,"Fut")))  _ -> (HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "''" ++ clsName) [hs|[]|] :) -- the extra future field is empty
-                              _ -> id)
-                           (HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) texp : acc)
-                   -- Field f;
-                   ABS.FieldClassBody t (ABS.L (p,fid)) -> pure $ case t of
-                               -- it is an unitialized future (abs allows this)
-                               ABS.TPoly (ABS.U_ (ABS.U (_,"Fut")))  _ -> 
-                                    HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) [hs|nullFuture'|] 
-                                  : HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "''" ++ clsName) [hs|[]|] -- the extra future field is empty 
-                                  : acc
-                               -- it may be an object (to be set to null) or foreign (to be set to undefined)
-                               ABS.TSimple qtyp -> HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
-                                                  (let (prefix, ident) = splitQU qtyp
-                                                       Just (SV symbolType _) = if null prefix
-                                                                               then snd <$> find (\ (SN ident' modul,_) -> ident == ident' && maybe True (not . snd) modul) (M.assocs ?st)
-                                                                               else M.lookup (SN ident (Just (prefix, True))) ?st 
-                                                   in case symbolType of
-                                                        Interface _ _ -> [hs|$(HS.Var $ HS.UnQual $ HS.Ident $ showQU qtyp) null|]
-                                                        Foreign -> [hs|(I'.error "foreign object not initialized")|]
-                                                        _ -> errorPos p "A field must be initialised if it is not of a reference type"
-                                                  ) : acc
-                               -- it may be foreign (to be set to undefined)
-                               ABS.TPoly qtyp _ -> HS.FieldUpdate (HS.UnQual $ HS.Ident $ fid ++ "'" ++ clsName) 
-                                                  (let (prefix, ident) = splitQU qtyp
-                                                       Just (SV symbolType _) = if null prefix
-                                                                               then snd <$> find (\ (SN ident' modul,_) -> ident == ident' && maybe True (not . snd) modul) (M.assocs ?st)
-                                                                               else M.lookup (SN ident (Just (prefix, True))) ?st
-                                                   in case symbolType of
-                                                        Foreign -> [hs|(I'.error "foreign object not initialized")|]
-                                                        _ -> errorPos p "A field must be initialised if it is not of a reference type"
-                                                  ) : acc
-                               ABS.TInfer -> errorPos p "Cannot infer type of field which has not been assigned"
-
-                   ABS.MethClassBody _ _ _ _ -> case mInit of
-                               ABS.NoBlock -> pure acc -- ignore, TODO: maybe this allows methclassbody to be intertwined with fieldbody
-                               ABS.JustBlock _-> fail "Second parsing error: Syntactic error, no method declaration accepted here"
-
-                          )
-                   [] ldecls)
-        M.empty) Nothing]
-
-  : -- The init'Class function
+    (HS.UnGuardedRhs $ runReader (let ?tyvars = []
+                                      ?cname = ""  -- it is transformed to pure code, so no need for clsName
+                                      ?fields = fields
+                                  in tPureExp $ transformFieldBody ldecls) M.empty) Nothing]
+  ]
+  ++ -- The init'Class function
   [ HS.TypeSig noLoc' [HS.Ident $ "init'" ++ clsName] (HS.TyApp 
                                                       (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") 
                                                       (HS.TyCon $ HS.UnQual $ HS.Ident clsName) `HS.TyFun` [ty|I'.IO ()|])
@@ -198,6 +148,46 @@ tDecl (ABS.DClassParImplements (ABS.U (cpos,clsName)) cparams impls ldecls mInit
           (M.assocs aloneMethods)
 
   where
+    transformFieldBody :: [ABS.ClassBody] -> ABS.PureExp
+    transformFieldBody = foldr (\case
+         ABS.MethClassBody _ _ _ _ -> case mInit of
+                               ABS.NoBlock -> id -- ignore, TODO: maybe this allows methclassbody to be intertwined with fieldbody
+                               ABS.JustBlock _-> error "Second parsing error: Syntactic error, no method declaration accepted here"
+         ABS.FieldAssignClassBody t l e -> ABS.ELet (ABS.FormalPar t $ l `appendL` "'this") e
+         ABS.FieldClassBody t l@(ABS.L (p,_)) -> case t of
+            ABS.TInfer -> errorPos p "Cannot infer type of field which has not been assigned"
+            -- it is an unitialized future (abs allows this)
+            ABS.TPoly (ABS.U_ (ABS.U (_,"Fut")))  _ -> ABS.ELet (ABS.FormalPar t $ l `appendL` "'this") (ABS.EVar (ABS.L (p,"nullFuture'")))
+            -- it may be foreign (to be set to undefined)
+            ABS.TPoly qtyp _ -> ABS.ELet (ABS.FormalPar t $ l `appendL` "'this") 
+                                                  (let (prefix, ident) = splitQU qtyp
+                                                       Just (SV symbolType _) = if null prefix
+                                                                                then snd <$> find (\ (SN ident' modul,_) -> ident == ident' && maybe True (not . snd) modul) (M.assocs ?st)
+                                                                                else M.lookup (SN ident (Just (prefix, True))) ?st
+                                                   in case symbolType of
+                                                        Foreign -> ABS.EVar (ABS.L (p,"I'.undefined")) -- [hs|(I'.error "foreign object not initialized")|]
+                                                        _ -> errorPos p "A field must be initialised if it is not of a reference type"
+                                                  )
+            -- it may be an object (to be set to null) or foreign (to be set to undefined)
+            ABS.TSimple qtyp -> ABS.ELet (ABS.FormalPar t $ l `appendL` "'this") 
+                                  (let (prefix, ident) = splitQU qtyp
+                                       Just (SV symbolType _) = if null prefix
+                                                                then snd <$> find (\ (SN ident' modul,_) -> ident == ident' && maybe True (not . snd) modul) (M.assocs ?st)
+                                                               else M.lookup (SN ident (Just (prefix, True))) ?st 
+                                   in case symbolType of
+                                        Interface _ _ -> ABS.ELit ABS.LNull -- [hs|$(HS.Var $ HS.UnQual $ HS.Ident $ showQU qtyp) null|]
+                                        Foreign -> ABS.EVar (ABS.L (p,"I'.undefined"))-- [hs|(I'.error "foreign object not initialized")|]
+                                        _ -> errorPos p "A field must be initialised if it is not of a reference type"
+                                  )
+                 
+         )
+         -- the data-constructor of the class applied to the local variables
+         (ABS.EParamConstr (ABS.U_ cident) 
+          (foldr (\ (fName,fTyp) acc -> case fTyp of
+                                          ABS.TPoly (ABS.U_ (ABS.U (p, "Fut"))) _ -> ABS.ESinglConstr (ABS.U_ (ABS.U (p,"Nil"))) : ABS.EVar (fName `appendL` "'this") : acc
+                                          _ -> ABS.EVar fName : acc
+            ) [] $ M.toAscList fields))
+
     -- The method names (both implementing & alone methods) of this class mapped to their bodies
     classMethods :: M.Map String ABS.ClassBody
     classMethods = M.fromList $ mapMaybe (\case 

@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams #-}
 module ABS.Compiler.Utils 
-    ( showQL
+    ( appendL
+    , showQL
     , showQU
     , splitQU
     , lineQU
@@ -18,6 +19,8 @@ import Language.Haskell.Exts.SrcLoc (SrcLoc (..))
 import Data.Char (toLower)
 import Debug.Trace (trace)
 
+appendL :: ABS.L -> String -> ABS.L
+appendL (ABS.L (p,s)) s' = ABS.L (p,s++s') 
 
 showQL :: ABS.QL -> String
 showQL (ABS.L_ (ABS.L (_,ident))) = ident
