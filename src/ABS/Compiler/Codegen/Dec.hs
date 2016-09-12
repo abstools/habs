@@ -65,8 +65,10 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
                       (([HS.Ident $  i ++ "'" ++ clsName], tType t): acc) -- TODO: bang if prim type
                      ) [] $ M.toAscList fields)] []
 
-  : -- A smart-constructor for pure fields
-  HS.FunBind [HS.Match noLoc' (HS.Ident $ "smart'" ++ clsName)
+  :
+  [HS.TypeSig noLoc' [HS.Ident $ "smart'" ++ clsName]
+    (foldr (\ (ABS.FormalPar t _) acc -> tType t `HS.TyFun` acc) (HS.TyCon $ HS.UnQual $ HS.Ident clsName) cparams) 
+  ,HS.FunBind [HS.Match noLoc' (HS.Ident $ "smart'" ++ clsName)
     -- the class params serve as input-args to the smart constructor
     (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident $ pid ++ "'this")) cparams) Nothing 
     -- rhs
@@ -74,8 +76,8 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
                                       ?cname = ""  -- it is transformed to pure code, so no need for clsName
                                       ?fields = fields
                                   in tPureExp $ transformFieldBody ldecls) M.empty) Nothing]
-      
-  : -- The init'Class function
+  ]
+  ++ -- The init'Class function
   [ HS.TypeSig noLoc' [HS.Ident $ "init'" ++ clsName] (HS.TyApp 
                                                       (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") 
                                                       (HS.TyCon $ HS.UnQual $ HS.Ident clsName) `HS.TyFun` [ty|I'.IO ()|])
@@ -163,7 +165,7 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
                                                                                 then snd <$> find (\ (SN ident' modul,_) -> ident == ident' && maybe True (not . snd) modul) (M.assocs ?st)
                                                                                 else M.lookup (SN ident (Just (prefix, True))) ?st
                                                    in case symbolType of
-                                                        Foreign -> ABS.EVar (ABS.L (p,"I'.undefined'")) -- [hs|(I'.error "foreign object not initialized")|]
+                                                        Foreign -> ABS.EVar (ABS.L (p,"I'.undefined")) -- [hs|(I'.error "foreign object not initialized")|]
                                                         _ -> errorPos p "A field must be initialised if it is not of a reference type"
                                                   )
             -- it may be an object (to be set to null) or foreign (to be set to undefined)
@@ -174,7 +176,7 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
                                                                else M.lookup (SN ident (Just (prefix, True))) ?st 
                                    in case symbolType of
                                         Interface _ _ -> ABS.ELit ABS.LNull -- [hs|$(HS.Var $ HS.UnQual $ HS.Ident $ showQU qtyp) null|]
-                                        Foreign -> ABS.EVar (ABS.L (p,"I'.undefined'"))-- [hs|(I'.error "foreign object not initialized")|]
+                                        Foreign -> ABS.EVar (ABS.L (p,"I'.undefined"))-- [hs|(I'.error "foreign object not initialized")|]
                                         _ -> errorPos p "A field must be initialised if it is not of a reference type"
                                   )
                  
