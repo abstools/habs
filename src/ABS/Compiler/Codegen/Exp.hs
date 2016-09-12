@@ -204,8 +204,6 @@ tPureExp (ABS.ELit lit) = pure $ case lit of
                                                then error "cannot access this keyword inside main block or pure code"
                                                else [hs|(up' this)|]
                                    ABS.LNull -> [hs|(up' null)|]
-                                   ABS.LThisDC -> [hs|thisDC|]
-
 
 -- UPCASTING
 ------------

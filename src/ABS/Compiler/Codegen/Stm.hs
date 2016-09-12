@@ -357,6 +357,8 @@ tAss _ _ (ABS.L (_,n)) (ABS.ExpE (ABS.Random pexp)) = do
          in [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< (random =<< $(maybeThis fields texp))|]
 
 tAss _ _ (ABS.L (_,n)) (ABS.ExpE ABS.ProNew) = pure $ maybeLift [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< pro_new|]
+tAss _ _ (ABS.L (_,n)) (ABS.ExpE ABS.ThisDC) = pure $ maybeLift [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) thisDC|]
+tAss _ _ (ABS.L (_,n)) (ABS.ExpE ABS.Currentms) = pure $ maybeLift [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< currentms|]
 tAss _ _ (ABS.L (_,n)) (ABS.ExpE ABS.Now) = pure $ maybeLift [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< now|]
 tAss _ _ (ABS.L (_,n)) (ABS.ExpE ABS.Readln) = pure $ maybeLift [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< readln|]
 
@@ -608,6 +610,10 @@ tDecAss _ _ _ (ABS.ExpE (ABS.Random pexp)) = do
 
 
 tDecAss _ _ _ (ABS.ExpE ABS.ProNew) = pure $ maybeLift [hs|I'.newIORef =<< pro_new|]
+
+tDecAss _ _ _ (ABS.ExpE ABS.ThisDC) = pure $ maybeLift [hs|I'.newIORef thisDC|]
+
+tDecAss _ _ _ (ABS.ExpE ABS.Currentms) = pure $ maybeLift [hs|I'.newIORef =<< currentms|]
 
 tDecAss _ _ _ (ABS.ExpE ABS.Now) = pure $ maybeLift [hs|I'.newIORef =<< now|]
 
@@ -954,6 +960,12 @@ tFieldAss _ (ABS.L (_,field)) (ABS.ExpE (ABS.Random pexp)) = do
 
 tFieldAss _ (ABS.L (_,field)) (ABS.ExpE ABS.ProNew) =
   pure $ maybeLift [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) <$!> pro_new) =<< I'.readIORef this')|]
+
+tFieldAss _ (ABS.L (_,field)) (ABS.ExpE ABS.ThisDC) =
+  pure $ maybeLift [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) thisDC) =<< I'.readIORef this')|]
+
+tFieldAss _ (ABS.L (_,field)) (ABS.ExpE ABS.Currentms) =
+  pure $ maybeLift [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) <$!> currentms) =<< I'.readIORef this')|]
 
 tFieldAss _ (ABS.L (_,field)) (ABS.ExpE ABS.Now) =
   pure $ maybeLift [hs|I'.writeIORef this' =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) <$!> now) =<< I'.readIORef this')|]
@@ -1702,6 +1714,8 @@ tEffExp _ (ABS.Random pexp) _ = do
 
 
 tEffExp _ ABS.ProNew _ = pure $ maybeLift [hs|pro_new|]
+tEffExp _ ABS.ThisDC _ = pure $ maybeLift [hs|I'.pure thisDC|]
+tEffExp _ ABS.Currentms _ = pure $ maybeLift [hs|currentms|]
 tEffExp _ ABS.Now _ = pure $ maybeLift [hs|now|]
 tEffExp _ ABS.Readln _ = pure $ maybeLift [hs|readln|]
 
