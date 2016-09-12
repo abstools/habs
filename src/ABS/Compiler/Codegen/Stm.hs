@@ -19,7 +19,6 @@ import Control.Monad.Trans.Reader (runReader, ask, local)
 import qualified Data.Map as M
 import Data.Foldable (foldlM)
 import Data.List (nub, find)
-import Data.Maybe (isJust)
 
 import Control.Exception (assert)
 #define todo assert False (error "not implemented yet")
@@ -62,7 +61,6 @@ tAss _ _ (ABS.L (_,n)) (ABS.ExpP pexp) = do
          in [hs|I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n) =<< $(maybeThis fields texp)|]
 
 tAss as (ABS.TSimple qu) (ABS.L (_,n)) (ABS.ExpE (ABS.New qcname args)) = case find (\case
-                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) (ABS.ELit ABS.LThisDC)) -> False -- ignore [DC:thisDC]
                       ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                       _ -> False) as of
  Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
@@ -129,7 +127,6 @@ tAss _ ABS.TInfer (ABS.L (p, _)) (ABS.ExpE (ABS.NewLocal _ _)) = errorPos p "Can
 
 tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
   case pexp of
-   ABS.ELit ABS.LThisDC -> errorPos p "synchronous call on DC not allowed"
    ABS.EVar ident@(ABS.L (_,calleeVar)) -> do
     (formalParams, localVars) <- getFormalLocal
     scopeLevels <- get
@@ -205,7 +202,6 @@ tAss _ _ (ABS.L (_,n)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) args)) 
 
 tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
  case pexp of
-  ABS.ELit ABS.LThisDC -> tAss a typ i (ABS.ExpE (ABS.AsyncMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args))
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,fields,onlyPureDeps) <- depends args
@@ -278,7 +274,6 @@ tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) a
 
 tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args)) =
  case pexp of
-  ABS.ELit ABS.LThisDC -> tAss a typ i (ABS.ExpE (ABS.AwaitMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args))
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,fields,onlyPureDeps) <- depends args
@@ -408,7 +403,6 @@ tDecAss _ _ _ (ABS.ExpP pexp) = do
 
 
 tDecAss as (ABS.TSimple qu) _ (ABS.ExpE (ABS.New qcname args)) = case find (\case
-                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) (ABS.ELit ABS.LThisDC)) -> False -- ignore [DC:thisDC]
                       ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                       _ -> False) as of
  Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
@@ -475,7 +469,6 @@ tDecAss _ ABS.TInfer (ABS.L (p, _)) (ABS.ExpE (ABS.NewLocal _ _)) = errorPos p "
 
 tDecAss a t i (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
   case pexp of
-   ABS.ELit ABS.LThisDC -> errorPos p "synchronous call on DC not allowed"
    ABS.EVar ident@(ABS.L (_, calleeVar)) -> do
     typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
     case typ of
@@ -550,7 +543,6 @@ tDecAss _ _ _ (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) args)) = do
 
 tDecAss a t i (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
  case pexp of
-  ABS.ELit ABS.LThisDC -> tDecAss a t i (ABS.ExpE (ABS.AsyncMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args))
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,fields,onlyPureDeps) <- depends args
@@ -673,7 +665,6 @@ tFieldAss :: (?absFileName::String, ?cAloneMethods::[String], ?cname::String, ?f
           -> BlockScope HS.Exp
 tFieldAss a i@(ABS.L (_, field)) (ABS.ExpE (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args)) = 
  case pexp of
-  ABS.ELit ABS.LThisDC -> tFieldAss a i (ABS.ExpE (ABS.AwaitMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args))
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,_,onlyPureDeps) <- depends args
@@ -757,7 +748,6 @@ tFieldAss _ (ABS.L (_,field)) (ABS.ExpP pexp) = do
   
 
 tFieldAss as i@(ABS.L (_,field)) (ABS.ExpE (ABS.New qcname args)) = case find (\case
-                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) (ABS.ELit ABS.LThisDC)) -> False -- ignore [DC:thisDC]
                       ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                       _ -> False) as of
  Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
@@ -826,7 +816,6 @@ tFieldAss _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.NewLocal qcname args)) = do
 
 tFieldAss a i@(ABS.L (_,field)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
   case pexp of
-   ABS.ELit ABS.LThisDC -> errorPos p "synchronous call on DC not allowed"
    ABS.EVar ident@(ABS.L (_,calleeVar)) -> do
     (formalParams, localVars) <- getFormalLocal
     scopeLevels <- get
@@ -910,7 +899,6 @@ tFieldAss _ (ABS.L (_,field)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) 
 
 tFieldAss a i@(ABS.L (_,field)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
  case pexp of
-  ABS.ELit ABS.LThisDC -> tFieldAss a i (ABS.ExpE (ABS.AsyncMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args))
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,_,onlyPureDeps) <- depends args
@@ -1053,12 +1041,20 @@ tStm (ABS.AnnStm as stmt)
     if ?isInit
     then error "cost annotations not allowed inside init"
     else do
+      (formalParams, localVars) <- getFormalLocal
       let costExps = foldl (\ acc -> \case ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"Cost")))) pexp) -> pexp:acc; _ -> acc) [] as
-      trequest <- tStm $ ABS.AnnStm [] $ ABS.SExp $ ABS.ExpE $ 
-                  ABS.AwaitMethCall (ABS.ELit ABS.LThisDC) (ABS.L ((0,0),"request__")) [foldl1 ABS.EAdd costExps]
+          costSumExp = foldl1 ABS.EAdd costExps
+      (_,fields,onlyPureDeps) <- depends [costSumExp]
+      
+      let trequest = HS.Qualifier $
+            if onlyPureDeps
+            then let mapplied = HS.App [hs|request__|] $ runReader (let ?tyvars = [] in tPureExp costSumExp) formalParams
+                 in maybeThisLifted fields [hs|(\ (DC obj') -> awaitSugar' this (\ _ -> I'.pure ()) obj' ($mapplied)) thisDC|]
+            else let mapplied = HS.InfixApp [hs|I'.pure request__|] (HS.QVarOp $ HS.UnQual $ HS.Symbol "<*>") $ runReader (let ?vars = localVars in tStmExp costSumExp) formalParams                     
+                 in [hs|(\ (DC obj') -> awaitSugar' this (\ _ -> I'.pure ()) obj' =<< I'.lift $(maybeThis fields mapplied)) thisDC|]
       tstmt <- tStm $ ABS.AnnStm (filter (\case ABS.Ann(ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"Cost")))) pexp) -> False; _ -> True) as)
                       stmt
-      return (trequest++tstmt)
+      return (trequest:tstmt)
 
 -- sdecass awaitmethcall has to be treated specially
 tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.L (p,n)) e@(ABS.ExpE (ABS.AwaitMethCall _ _ _)))) = do
@@ -1491,7 +1487,6 @@ tEffExp :: ( ?absFileName:: String
            -> Bool 
            -> BlockScope HS.Exp
 tEffExp as (ABS.New qcname args) _ = case find (\case
-                      ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) (ABS.ELit ABS.LThisDC)) -> False -- ignore [DC:thisDC]
                       ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                       _ -> False) as of
  Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
@@ -1554,7 +1549,6 @@ tEffExp _ (ABS.NewLocal qcname args) _ = do
 
 
 tEffExp a (ABS.SyncMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
-  ABS.ELit ABS.LThisDC -> errorPos p "synchronous call to DC not allowed"
   ABS.EVar ident@(ABS.L (_,calleeVar)) -> do
     (formalParams, localVars) <- getFormalLocal
     scopeLevels <- get
@@ -1627,7 +1621,6 @@ tEffExp _ (ABS.ThisSyncMethCall (ABS.L (_,mname)) args) _ = do
          in [hs|(this <..>) =<< I'.lift $(maybeThis fields mapplied)|]
 
 tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
-  ABS.ELit ABS.LThisDC -> tEffExp a (ABS.AsyncMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args) isAlone
   ABS.ELit ABS.LThis -> do
     (formalParams, localVars) <- getFormalLocal
     (_,fields,onlyPureDeps) <- depends args
@@ -1711,7 +1704,6 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
   
 
 tEffExp a (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args) _isAlone = case pexp of
-  ABS.ELit ABS.LThisDC -> tEffExp a (ABS.AwaitMethCall (ABS.EVar (ABS.L (p,"thisDC"))) (ABS.L (p,mname)) args) _isAlone
   --ABS.ELit ABS.LThisDC -> do
   --        (formalParams, localVars) <- getFormalLocal
   --        (_,fields,onlyPureDeps) <- depends args
