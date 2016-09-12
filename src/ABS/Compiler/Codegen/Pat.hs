@@ -40,7 +40,7 @@ tPattern (ABS.PParamConstr (ABS.U_ (ABS.U (_,"Cons"))) [subpat1, subpat2]) = do
   (tpat2,tguard2) <- tPattern subpat2
   pure (HS.PParen $ HS.PInfixApp tpat1 (HS.Special $ HS.Cons) tpat2, tguard1++tguard2)
 tPattern (ABS.PParamConstr (ABS.U_ (ABS.U (p,"Cons"))) _) = errorPos p "wrong number of arguments to Cons"
-tPattern (ABS.PParamConstr (ABS.U_ (ABS.U (p,"InsertAssoc"))) _) = errorPos p "InsertAssoc is unsafe, you should avoid it."
+--tPattern (ABS.PParamConstr (ABS.U_ (ABS.U (p,"InsertAssoc"))) _) = errorPos p "InsertAssoc is unsafe, you should avoid it."
 tPattern (ABS.PParamConstr (ABS.U_ (ABS.U (_,tid))) subpats) = do
   (tpats,tguards) <- unzip <$> mapM tPattern subpats
   pure (HS.PApp (HS.UnQual $ HS.Ident tid) tpats, concat tguards)

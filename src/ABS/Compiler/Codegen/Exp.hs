@@ -132,8 +132,8 @@ tPureExp (ABS.EIntNeg e) = do te <- tPureExp e; pure [hs|(- $te)|]
 
 tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Unit"))))     = pure [hs|()|]
 tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Nil"))))      = pure [hs|[]|]
-tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptyMap")))) = pure [hs|_emptyMap|]
-tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptySet")))) = pure [hs|_emptySet|]
+--tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptyMap")))) = pure [hs|_emptyMap|]
+--tPureExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptySet")))) = pure [hs|_emptySet|]
 tPureExp (ABS.ESinglConstr qu) = pure $ maybeUpException $ HS.Con $ HS.UnQual $ HS.Ident $ showQU qu
   where (modul,ident) = splitQU qu
         maybeUpException = if null modul
@@ -157,11 +157,11 @@ tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"Cons"))) [l, r]) = do
    tr <- tPureExp r
    pure $ [hs|($tl : $tr)|]
 tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Cons"))) _) = errorPos p "wrong number of arguments to Cons"
-tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"InsertAssoc"))) [l, r]) = do
-  tl <- tPureExp l
-  tr <- tPureExp r
-  pure $ [hs|(insertAssoc $tl $tr)|]
-tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"InsertAssoc"))) _) = errorPos p "wrong number of arguments to InsertAssoc"
+--tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"InsertAssoc"))) [l, r]) = do
+--  tl <- tPureExp l
+--  tr <- tPureExp r
+--  pure $ [hs|(insertAssoc $tl $tr)|]
+--tPureExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"InsertAssoc"))) _) = errorPos p "wrong number of arguments to InsertAssoc"
 tPureExp (ABS.EParamConstr qu args) = maybeUpException . HS.Paren <$>
                                         foldlM (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
                                         (HS.Con $ HS.UnQual $ HS.Ident $ showQU qu)

@@ -52,7 +52,9 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
    , HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.StdLib"
                    , HS.importQualified = False
                    , HS.importAs = Nothing
-                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
+                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importPkg = Nothing 
+                   , HS.importSpecs = Just (True, map (HS.IVar . HS.Ident) ["Map","map","_emptyMap","put","insert","lookup","lookupMaybe","lookupUnsafe","lookupDefault","removeKey","keys","values","Set","set","_emptySet","emptySet","size","contains","union","intersection","difference","insertElement","remove","take","hasNext","next"])
+                   , HS.importSafe = False
                    } 
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Function" 
                   , HS.importQualified = False

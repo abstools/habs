@@ -148,8 +148,8 @@ tStmExp (ABS.EIntNeg e) = do te <- tStmExp e; pure [hs|(I'.negate <$!> $te)|]
 
 tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Unit"))))     = pure [hs|I'.pure ()|]
 tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"Nil"))))      = pure [hs|I'.pure []|]
-tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptyMap")))) = pure [hs|I'.pure _emptyMap|]
-tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptySet")))) = pure [hs|I'.pure _emptySet|]
+--tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptyMap")))) = pure [hs|I'.pure _emptyMap|]
+--tStmExp (ABS.ESinglConstr (ABS.U_ (ABS.U (_,"EmptySet")))) = pure [hs|I'.pure _emptySet|]
 tStmExp (ABS.ESinglConstr qu) = pure [hs|I'.pure $(maybeUpException $ HS.Con $ HS.UnQual $ HS.Ident $ showQU qu)|]
   where (modul,ident) = splitQU qu
         maybeUpException = if null modul
@@ -182,11 +182,11 @@ tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"Cons"))) [l, r]) = do
    tr <- tStmExp r
    pure $ [hs|((:) <$!> $tl <*> $tr)|]
 tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Cons"))) _) = errorPos p "wrong number of arguments to Cons"
-tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"InsertAssoc"))) [l, r]) = do
-  tl <- tStmExp l
-  tr <- tStmExp r
-  pure $ [hs|(insertAssoc <$!> $tl <*> $tr)|]
-tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"InsertAssoc"))) _) = errorPos p "wrong number of arguments to InsertAssoc"
+--tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"InsertAssoc"))) [l, r]) = do
+--  tl <- tStmExp l
+--  tr <- tStmExp r
+--  pure $ [hs|(insertAssoc <$!> $tl <*> $tr)|]
+--tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"InsertAssoc"))) _) = errorPos p "wrong number of arguments to InsertAssoc"
 tStmExp (ABS.EParamConstr qu args) = maybeUpException . HS.Paren <$>
     foldlM
     (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
