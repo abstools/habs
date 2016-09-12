@@ -180,22 +180,22 @@ tPureExp (ABS.EVar var@(ABS.L (p,pid))) = do
      pure $ case M.lookup var scope of
               Just t -> maybeUpcast t $ HS.Var $ HS.UnQual $ HS.Ident pid
               Nothing ->  case M.lookup var ?fields of
-                           Just t -> if null ?cname
-                                    then errorPos p "cannot access fields inside main block or pure functions"
+                           Just t -> maybeUpcast t $ if null ?cname
+                                    then HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'this" -- errorPos p "cannot access fields inside main block or pure functions"
                                     else let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname -- accessor
-                                         in maybeUpcast t [hs|($fieldFun this'')|] -- accessor
+                                         in [hs|($fieldFun this'')|] -- accessor
                            Nothing -> case find (\ (SN ident' modul,_) -> pid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
                                        Just (_,SV Foreign _) -> HS.Var $ HS.UnQual $ HS.Ident pid
                                        _ ->  HS.Var $ HS.UnQual $ HS.Ident pid -- errorPos p $ pid ++ " not in scope" -- 
 
 
-tPureExp (ABS.EField var@(ABS.L (p, field))) = if null ?cname
-                                                   then errorPos p "cannot access fields inside main block or pure code"
-                                                   else case M.lookup var ?fields of
-                                                          Just t -> let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname
-                                                                   in pure $ maybeUpcast t [hs|($fieldFun this'')|]
-                                                          Nothing -> errorPos p "no such field"
-
+tPureExp (ABS.EField var@(ABS.L (p, field))) = case M.lookup var ?fields of
+                                                  Just t -> pure $ maybeUpcast t $ if null ?cname
+                                                            then HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'this" -- errorPos p "cannot access fields inside main block or pure code"
+                                                            else let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname
+                                                                 in [hs|($fieldFun this'')|]
+                                                  Nothing -> errorPos p "no such field"
+  
 tPureExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LStr str ->  HS.Lit $ HS.String str
                                    ABS.LInt i ->  HS.Lit $ HS.Int i
