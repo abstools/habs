@@ -171,9 +171,10 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
              Exception -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden,
                           HS.EVar $ HS.UnQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- myException' smart constructor
                          ]
-             Class -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden,
-                          HS.EVar $ HS.UnQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- class smart constructor
-                         ]
+             Class -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden
+                      ,HS.EVar $ HS.UnQual $ HS.Ident $ "smart'" ++ showQA iden -- class smart constructor
+                      ,HS.EVar $ HS.UnQual $ HS.Ident $ "init'" ++ showQA iden -- class init block 
+                      ]
              -- function, datatype, type synonym, foreign
              _ -> [HS.EVar $ HS.UnQual $ HS.Ident $ showQA iden] ) es
 
