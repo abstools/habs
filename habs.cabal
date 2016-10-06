@@ -37,6 +37,8 @@ executable habs
     habs-parser,
     -- for outputting a Haskell AST
     haskell-src-exts >= 1.17.0 && < 1.18.0,
+    -- otherwise haskell-src-exts-qq does not build
+    haskell-src-meta < 0.7.0,
     haskell-src-exts-qq == 0.7,
     -- for intermediate datastructures (e.g. symboltable)
     containers,
