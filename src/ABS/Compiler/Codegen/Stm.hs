@@ -1196,7 +1196,7 @@ tStm (ABS.AnnStm _ (ABS.SAwait ag)) = do
               in [hs|awaitDuration' this $texp1 $texp2|]
          else let texp1 = runReader (let ?vars = localVars in tStmExp pexp1) formalParams
                   texp2 = runReader (let ?vars = localVars in tStmExp pexp2) formalParams
-              in [hs|(\ e1' -> awaitDuration' this e1' =<< $texp2) =<< $texp1|] ]
+              in [hs|(\ e1' -> awaitDuration' this e1' =<< I'.lift ($texp2)) =<< I'.lift ($texp1)|] ]
 
 
     tGFut [] _ = [] 
