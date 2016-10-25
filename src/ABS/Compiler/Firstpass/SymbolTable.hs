@@ -110,8 +110,13 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                                           (SV Function sureExported)
 
             f (DInterf (U (_, s)) ms') = insertDup (SN s Nothing) 
-                                                           (SV (Interface 
-                                                                (map (\ (MethSig _ _ (L (_,s')) _) -> s') ms') -- add also its direct methods
+              (SV (Interface 
+                (map (\ (MethSig as _ (L (_,s')) ps) -> (s', if any (\case 
+                                                                  Ann (AnnNoType (ESinglConstr qu)) -> showQU qu == "HTTPCallable"
+                                                                  _ -> False
+                                                                ) as
+                                                             then map (\ (FormalPar _ (L (_,str))) -> str) ps
+                                                             else [])) ms') -- add also its direct methods
                                                                 M.empty) -- no super interfaces
                                                             sureExported)
 

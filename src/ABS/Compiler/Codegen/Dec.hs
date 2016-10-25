@@ -116,7 +116,7 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
                                                        (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _)|]])
                                                        Nothing 
                                                        (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
-                ) directMethods)
+                ) (map fst directMethods))
     -- the indirect instances
     : M.foldlWithKey (\ acc (SN n _) indirectMethods ->
                           HS.InstDecl noLoc' Nothing [] [] 
@@ -128,7 +128,7 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
                                                                              (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _)|]])
                                                                              Nothing 
                                                                              (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
-                                      ) indirectMethods) : acc
+                                      ) (map fst indirectMethods)) : acc
                      ) [] extends
             ) impls
 
@@ -209,7 +209,7 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
     aloneMethods = M.filterWithKey (\ m _ -> m `notElem` toImplementMethods) classMethods
         where
           toImplementMethods :: [String]
-          toImplementMethods = concatMap (\ (SV (Interface dmethods extends) _) -> concat $ dmethods : M.elems extends) $
+          toImplementMethods = concatMap (\ (SV (Interface dmethods extends) _) -> map fst $ concat $ dmethods : M.elems extends) $
                          M.elems $ M.filterWithKey (\ (SN i _) _ -> i `elem` map (snd . splitQU) impls) ?st
 
 

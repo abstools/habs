@@ -940,7 +940,7 @@ tFieldAss _ (ABS.L (_,field)) (ABS.ExpE (ABS.Get pexp)) = do
 
 tFieldAss _ (ABS.L (_,field)) (ABS.ExpE (ABS.ProTry pexp)) = do
     (formalParams, localVars) <- getFormalLocal
-    (_,__,onlyPureDeps) <- depends [pexp]
+    (_,_,onlyPureDeps) <- depends [pexp]
     pure $ maybeLift $
       if onlyPureDeps
       then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
@@ -950,7 +950,7 @@ tFieldAss _ (ABS.L (_,field)) (ABS.ExpE (ABS.ProTry pexp)) = do
 
 tFieldAss _ (ABS.L (_,field)) (ABS.ExpE (ABS.Random pexp)) = do
     (formalParams, localVars) <- getFormalLocal
-    (_,__,onlyPureDeps) <- depends [pexp]
+    (_,_,onlyPureDeps) <- depends [pexp]
     pure $ maybeLift $
       if onlyPureDeps
       then let texp = runReader (let ?tyvars = [] in tPureExp pexp) formalParams
@@ -984,17 +984,24 @@ tStm (ABS.AnnStm a (ABS.SDecAss t i@(ABS.L (p,n)) e@(ABS.ExpE (ABS.AwaitMethCall
  addToScope t i 
  awaitCall <- tAss a t i e
  pure [ HS.Generator (mkLoc p) (HS.PatTypeSig noLoc' (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t))) 
-                          [hs| I'.lift (I'.newIORef I'.undefined)|]
+                          [hs|I'.lift (I'.newIORef I'.undefined)|]
       , HS.Qualifier awaitCall
       ]
 -- rest
-tStm (ABS.AnnStm annots (ABS.SDecAss t i@(ABS.L (p,n)) e)) = do
+tStm (ABS.AnnStm as (ABS.SDecAss t i@(ABS.L (p,n)) e)) = do
   addToScope t i
-  pure . HS.Generator 
-    (mkLoc p) 
+  tstm <- tDecAss as t i e
+  pure $ 
+    (HS.Generator (mkLoc p) 
     (HS.PatTypeSig noLoc' (HS.PVar $ HS.Ident n) (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "IORef'") (tType t)))
-     <$> tDecAss annots t i e
-
+    tstm) : 
+    (case find (\case 
+                ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"HTTPName")))) _) -> True
+                _ -> False
+               ) as of
+      Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) (ABS.ELit (ABS.LStr str)))) -> 
+          [HS.Qualifier [hs|I'.lift ((\ v' -> I'.atomicModifyIORef' apiStore' (\ m' -> (put m' $(HS.Lit $ HS.String str) (I'.toDyn v'),()) )) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident n))|]]
+      _ -> []) 
 
 --- DISPATCHER: LOCAL-VARIABLE OR FIELD ASSIGMENT
 
