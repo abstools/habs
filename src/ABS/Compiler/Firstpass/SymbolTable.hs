@@ -95,7 +95,7 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
       -- | Only checks the in-module decls and builds an "unfinished" global symbol table
       localST :: Module -> SymbolTable
       localST (Module _ es _ decls _) = foldl (\ acc (AnnDecl _ d) -> f d acc) 
-                                 (M.singleton (SN "DeploymentComponent" Nothing) (SV (Interface ["load","total", "transfer","decrementResources", "incrementResources", "getName", "getCreationTime", "getStartupDuration", "getShutdownDuration", "getPaymentInterval", "getCostPerInterval", "getNumberOfCores", "acquire", "release", "shutdown", "request__"] M.empty) False)) -- start with an empty symbol table
+                                 (M.singleton (SN "DeploymentComponent" Nothing) (SV (Interface (map (\x -> (x,[])) ["load","total", "transfer","decrementResources", "incrementResources", "getName", "getCreationTime", "getStartupDuration", "getShutdownDuration", "getPaymentInterval", "getCostPerInterval", "getNumberOfCores", "acquire", "release", "shutdown", "request__"]) M.empty) False)) -- start with an empty symbol table
                                  decls   -- traverse all the local declarations
           where
 
@@ -110,8 +110,13 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                                           (SV Function sureExported)
 
             f (DInterf (U (_, s)) ms') = insertDup (SN s Nothing) 
-                                                           (SV (Interface 
-                                                                (map (\ (MethSig _ _ (L (_,s')) _) -> s') ms') -- add also its direct methods
+              (SV (Interface 
+                (map (\ (MethSig as _ (L (_,s')) ps) -> (s', if any (\case 
+                                                                  Ann (AnnNoType (ESinglConstr qu)) -> showQU qu == "HTTPCallable"
+                                                                  _ -> False
+                                                                ) as
+                                                             then map (\ (FormalPar _ (L (_,str))) -> str) ps
+                                                             else [])) ms') -- add also its direct methods
                                                                 M.empty) -- no super interfaces
                                                             sureExported)
 

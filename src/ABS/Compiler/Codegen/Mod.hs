@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, QuasiQuotes #-}
+{-# LANGUAGE ImplicitParams, QuasiQuotes, LambdaCase #-}
 module ABS.Compiler.Codegen.Mod 
     ( tModul
     ) where
@@ -10,9 +10,9 @@ import ABS.Compiler.Codegen.Stm (tMethod)
 
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
-import Language.Haskell.Exts.QQ (dec)
+import Language.Haskell.Exts.QQ (hs, dec)
 
-import qualified Data.Map as M (Map, lookup, keys, empty)
+import qualified Data.Map as M (Map, lookup, keys, empty, foldlWithKey, member, toAscList)
 import Data.List (find)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Char (isUpper)
@@ -32,6 +32,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                              , HS.Ident "FlexibleContexts" -- for some type inference of methods
                              , HS.Ident "PartialTypeSignatures" -- for inferring Eq,Ord contexts. Requires GHC>=7.10
                              , HS.Ident "LambdaCase" -- easier codegen for exceptions extension
+                             , HS.Ident "OverloadedStrings" -- for Scotty REST API
                              ]
     -- -fwarn-missing-methods:  for making error the missing ABS class methods
     -- -fno-ignore-asserts:  for not ignoring asserts (which is the default in Haskell)
@@ -83,7 +84,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.IORef" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "newIORef", HS.IVar $ HS.Ident "readIORef", HS.IVar $ HS.Ident "writeIORef"])
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "newIORef", HS.IVar $ HS.Ident "readIORef", HS.IVar $ HS.Ident "writeIORef", HS.IVar $ HS.Ident "atomicModifyIORef'"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad.Trans.Class" 
@@ -133,6 +134,24 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
                   , HS.importSpecs = Just (False,[HS.IThingAll $ HS.Ident "Exception", HS.IVar $ HS.Ident "SomeException", HS.IVar $ HS.Ident "throwTo", HS.IVar $ HS.Ident "throw"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Dynamic" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "toDyn", HS.IVar $ HS.Ident "fromDynamic"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Map" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "lookup"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Web.Scotty" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "get", HS.IVar $ HS.Ident "param", HS.IVar $ HS.Ident "json", HS.IVar $ HS.Ident "raise"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   ]
@@ -251,6 +270,47 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                                                       
     tMain :: (?st::SymbolTable) => ABS.MaybeBlock -> [HS.Decl]
     tMain ABS.NoBlock = []
-    tMain (ABS.JustBlock block) = [[dec|main = main_is' (\ this@(Obj' _ _ thisDC) -> $(tMethod block [] M.empty "" [] False))|]] -- no params, no fields, empty class-name, no alone-methods
-
+    tMain (ABS.JustBlock block) = 
+      let callableMethods :: [(String,String,[String])] -- interface, method, formalparams
+          callableMethods = M.foldlWithKey (\ acc k v -> case k of 
+              SN iname Nothing -> case v of
+                SV (Interface dmethods _imethods) _ -> foldl (\ acc' (mname, fparams) -> 
+                  if null fparams
+                  then acc'
+                  else (iname,mname,fparams):acc') [] dmethods ++ acc
+                _ -> acc
+              _ -> acc
+            ) [] ?st
+          makeCallable :: (String,String,[String]) -> HS.Stmt
+          makeCallable (iname,mname,fparams) = HS.Qualifier
+            [hs|I'.get $(HS.Lit $ HS.String $ "/call/:httpName'/" ++ mname) (do
+                  objs' <- I'.lift (I'.readIORef apiStore')
+                  httpName' <- I'.param "httpName'"
+                  case I'.lookup httpName' objs' of
+                    Just obj' -> I'.json =<< $casts
+                    Nothing -> I'.raise "no such object name")
+            |]
+            where ipat = iname ++ " obj''"
+                  mcalled = foldl (\ acc str -> [hs|$acc <*> I'.param $(HS.Lit $ HS.String str)|]) 
+                                   [hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname)|] fparams
+                  subInterfaces = foldl (\ acc -> \case 
+                                           (SN iname' _, SV (Interface _ extends) _) -> if SN iname Nothing `M.member` extends then iname':acc else acc  
+                                           _ -> acc
+                                        ) [] (M.toAscList ?st)  
+                  makeSubCast acc iname' = [hs|case I'.fromDynamic obj' of
+                      Just (__ipat'__) -> do
+                        mapplied' <- $mcalled
+                        I'.lift (get =<< obj'' <!> mapplied')
+                      Nothing -> $acc|]
+                      where ipat' = iname' ++ " obj''"
+                  casts = foldl makeSubCast [hs|case I'.fromDynamic obj' of
+                                                    Just (__ipat__) -> do
+                                                      mapplied' <- $mcalled
+                                                      I'.lift (get =<< obj'' <!> mapplied')
+                                                    Nothing -> I'.raise "wrong interface"|] subInterfaces 
+          scottyAction = if null callableMethods
+                         then [hs|I'.pure ()|]
+                         else HS.Do $ map makeCallable callableMethods
+      in [[dec|main = main_is' (\ this@(Obj' _ _ thisDC) -> $(tMethod block [] M.empty "" [] False)) ($scottyAction)|]] 
+         -- no params, no fields, empty class-name, no alone-methods
 
