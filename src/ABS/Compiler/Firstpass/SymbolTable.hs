@@ -39,10 +39,10 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
         StarFromImport YesForeign _ -> acc -- now ignore, todo: requires ghc-api
         StarFromImport NoForeign from -> let sTyp = showQU from
                                              exported = M.filter (\ (SV _ isExported) -> isExported) $ fromMaybe (error "no such module") $ M.lookup sTyp $ globalSTs ms
-                                         in M.unionWith (error "duplicate symbol") acc (M.mapKeys (\ k -> case normalize k of
-                                                                                            SN n Nothing -> SN n $ Just (sTyp, False)
-                                                                                            n -> n)
-                                                                                            exported)
+                                         in M.union acc $ M.map (\ (SV v _) -> SV v False) 
+                                                           $ M.mapKeys (\ k -> case normalize k of
+                                                                                 SN n Nothing -> SN n $ Just (sTyp, False)
+                                                                                 n -> n) exported
 
         AnyImport NoForeign qas -> foldl (\ acc' qa -> let (prefix,iden) = splitQA qa
                                                        in singleImport True prefix iden acc') acc qas
@@ -59,8 +59,9 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
         AnyExport qas -> foldl (\ acc' qa -> let 
            (prefix,iden) = splitQA qa
            mk = find (\ (SN sname mImported) -> sname == iden && case mImported of
-                                                                   Just (smodule,True) -> smodule == prefix   
-                                                                   _ -> True) (M.keys acc') -- todo
+                                                                   Just (smodule,_) -> smodule == prefix   
+                                                                   Nothing -> True
+                                                                   _ -> False) (M.keys acc') -- todo
                                              in maybe (error "symbol not in scope") (\ k -> M.adjust (\ (SV v _) -> SV v True) k acc') mk) acc qas
         AnyFromExport qas from -> foldl 
                                   (\ acc' qa -> M.insertWith (\ _ (SV v _) -> SV v True) 
