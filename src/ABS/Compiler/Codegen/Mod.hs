@@ -154,6 +154,12 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "get", HS.IVar $ HS.Ident "param", HS.IVar $ HS.Ident "json", HS.IVar $ HS.Ident "raise"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.StdLib" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "put"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
   ]
   -- TRANSLATED IMPORTS OF THE ABS-PROGRAM
   ++ concatMap tImport imports
@@ -180,8 +186,9 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
             SV symbolValue _ = fromJust $ M.lookup symbolName st
         in case symbolValue of
              -- in ABS the interface methods are implicitly exported, 
-             -- in HS, typeclass methods must be explicitly exported
-             Interface _ _ -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden]
+             -- in HS, typeclass methods must be explicitly exported and existential wrapper constructor
+             Interface _ _ -> [ HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden ++ "'"
+                              , HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden]
              -- in ABS the dataconstructor can be exported without its datatype!
              -- this is wrong, then you cannot do anything with that data-value
              -- in HS we *must* export its datatype also
