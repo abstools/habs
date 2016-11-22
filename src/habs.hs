@@ -11,7 +11,7 @@ import ABS.Compiler.Firstpass.SymbolTable
 import ABS.Compiler.Codegen.Mod (tModul)
 
 import Control.Monad (when)
-import System.FilePath ((</>), pathSeparator)
+import System.FilePath ((</>), pathSeparator, takeDirectory)
 import System.Directory (createDirectoryIfMissing)
 import System.IO (hPrint, stderr)
 import Data.List (isSuffixOf)
@@ -52,8 +52,8 @@ main = do
           -- clean-up empty LINE pragmas
           hsContentsClean = unlines . filter (not . isSuffixOf "{-# LINE 1 \"<unknown>.hs\" #-}") $ lines hsContents    
       
-      writeFile (haskellDirName </> haskellFileName) hsContentsClean
+      writeFile haskellFilePath hsContentsClean
 
-      where haskellFileName = map (\ c -> if c == '.' then pathSeparator else c) s  ++ ".hs"
-            haskellDirName = output_dir cmdOpt
+      where haskellFilePath = output_dir cmdOpt </> map (\ c -> if c == '.' then pathSeparator else c) s  ++ ".hs"
+            haskellDirName = takeDirectory haskellFilePath
  
