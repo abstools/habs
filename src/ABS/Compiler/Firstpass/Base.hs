@@ -26,7 +26,7 @@ data SymbolType = Function
                 | Datacons String -- ^ from which datatype it comes (required by Haskell module system)
                 | Exception
                 | Class
-                | Interface [(String,[String])] (Map SymbolName [(String,[String])]) -- ^ its direct method names, http-callable formal parameters & map of *all* extends interfaces to their own methods, http-callable formal parameters
+                | Interface [(String,Maybe [String])] (Map SymbolName [(String,Maybe [String])]) -- ^ its direct method names, http-callable formal parameters & map of *all* extends interfaces to their own methods, http-callable formal parameters
                 | Foreign
                   deriving Show
 
