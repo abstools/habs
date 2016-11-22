@@ -279,10 +279,10 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
       let callableMethods :: [(String,String,[String])] -- interface, method, formalparams
           callableMethods = M.foldlWithKey (\ acc k v -> case k of 
               SN iname Nothing -> case v of
-                SV (Interface dmethods _imethods) _ -> foldl (\ acc' (mname, fparams) -> 
-                  if null fparams
-                  then acc'
-                  else (iname,mname,fparams):acc') [] dmethods ++ acc
+                SV (Interface dmethods _imethods) _ -> foldl (\ acc' (mname, mfparams) -> 
+                  case mfparams of
+                   Nothing -> acc'
+                   Just fparams -> (iname,mname,fparams):acc') [] dmethods ++ acc
                 _ -> acc
               _ -> acc
             ) [] ?st

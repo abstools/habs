@@ -116,8 +116,8 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                                                   Ann (AnnNoType (ESinglConstr qu)) -> showQU qu == "HTTPCallable"
                                                                   _ -> False
                                                                 ) as
-                                                             then map (\ (FormalPar _ (L (_,str))) -> str) ps
-                                                             else [])) ms') -- add also its direct methods
+                                                             then Just $ map (\ (FormalPar _ (L (_,str))) -> str) ps
+                                                             else Nothing)) ms') -- add also its direct methods
                                                                 M.empty) -- no super interfaces
                                                             sureExported)
 
