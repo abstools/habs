@@ -11,7 +11,7 @@ Before installing the HABS backend, you need the Glasgow Haskell Compiler (**GHC
 
 a) Getting GHC on Ubuntu-Linux >= 16.04
 
-```
+```bash
 apt-get update
 apt-get install ghc cabal-install happy zlib1g-dev
 ```
@@ -24,14 +24,14 @@ Get the Haskell Platform for your OS from <https://www.haskell.org/platform>
 
 Clone and navigate to this repository:
 
-```
+```bash
 git clone https://github.com/abstools/habs
 cd habs/
 ```
 
 Then, from inside the repository run:
 
-```
+```bash
 git submodule update --init
 
 cabal sandbox init
@@ -47,7 +47,7 @@ cabal install
 
 Navigate to the cloned repository directory and run:
 
-```
+```bash
 cd habs/
 git pull
 git submodule update
@@ -59,7 +59,7 @@ cabal install
 
 From inside the cloned repository run:
 
-```
+```bash
 cd habs/
 cabal exec habs -- Module1.abs Module2.abs
 
