@@ -1,7 +1,7 @@
 # A Haskell library to translate ABS programs to Haskell equivalent code
 
 [![Build Status](https://travis-ci.org/abstools/habs.svg)](https://travis-ci.org/abstools/habs) [![License (3-Clause BSD)](https://img.shields.io/badge/license-BSD--3-blue.svg?style=flat)](http://opensource.org/licenses/BSD-3-Clause)
- ([online API docs](http://abstools.github.io/habs)) ([testing results](http://abstools.github.io/habs/test-results.html))
+ ([Documentation](http://abstools.github.io/habs)) ([Test Results](http://abstools.github.io/habs/test-results.html))
 
 A Haskell library to translate ABS programs to Haskell equivalent code.
 
@@ -71,3 +71,13 @@ cabal exec ghc -- gen/haskell/*.hs --make -main-is Module1
 ```
 
   , where `-main-is` should point to the module which contains the main ABS block you want to execute.
+  
+# Contributing
+
+The backend has been split into multiple subrepositories (git submodules):
+
+- [habs-parser](https://github.com/abstools/habs-parser): Contains the grammar & parser to parse ABS files.
+- [habs-runtime](https://github.com/abstools/habs-runtime): A library to implement the concurrency features of the ABS language inside Haskell.
+- [habs-stdlib](https://github.com/abstools/habs-stdlib): The ABS standard library expressed in Haskell.
+- [habs](https://github.com/abstools/habs) (This repository): Contains the code-generator of ABS to Haskell.
+- [habs-samples](https://github.com/abstools/habs-samples): Contains an ABS test suite and other sample ABS files.
