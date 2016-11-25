@@ -6,6 +6,7 @@ module ABS.Compiler.Firstpass.SymbolTable
 import ABS.Compiler.Firstpass.Base
 import ABS.AST
 import ABS.Compiler.Utils
+import ABS.Compiler.CmdOpt
 
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
@@ -37,6 +38,7 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                               acc 
                                               qas
         StarFromImport YesForeign _ -> acc -- now ignore, todo: requires ghc-api
+        StarFromImport NoForeign from | showQU from == "ABS.StdLib" && not (nostdlib cmdOpt) -> acc -- ignore if it is absstdlib
         StarFromImport NoForeign from -> let sTyp = showQU from
                                              exported = M.filter (\ (SV _ isExported) -> isExported) $ fromMaybe (error "no such module") $ M.lookup sTyp $ globalSTs ms
                                          in M.union acc $ M.map (\ (SV v _) -> SV v False) 
@@ -45,8 +47,12 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                                                                  n -> n) exported
 
         AnyImport NoForeign qas -> foldl (\ acc' qa -> let (prefix,iden) = splitQA qa
-                                                       in singleImport True prefix iden acc') acc qas
-        AnyFromImport NoForeign qas from -> foldl (\ acc' qa -> singleImport False (showQU from) (showQA qa)  acc') acc qas
+                                                       in if prefix == "ABS.StdLib." && not (nostdlib cmdOpt)
+                                                          then acc' -- ignore if it is absstdlib
+                                                          else singleImport True prefix iden acc') acc qas
+        AnyFromImport NoForeign qas from -> foldl (\ acc' qa -> if showQU from == "ABS.StdLib" && not (nostdlib cmdOpt)
+                                                                then acc' -- ignore if it is absstdlib
+                                                                else singleImport False (showQU from) (showQA qa)  acc') acc qas
                          ) M.empty
         where
           singleImport isQualified sTyp sIden  = let lookupRemote st' = (\ (SV v _) -> SV v False) $ -- don't inherit the exportness

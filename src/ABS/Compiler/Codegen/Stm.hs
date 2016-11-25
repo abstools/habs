@@ -1082,13 +1082,13 @@ tStm (ABS.AnnStm as (ABS.SDecAss t i@(ABS.L (p,n)) e)) = do
 
 --- DISPATCHER: LOCAL-VARIABLE OR FIELD ASSIGMENT
 
-tStm (ABS.AnnStm a (ABS.SAss i e)) = do
+tStm (ABS.AnnStm a (ABS.SAss i@(ABS.L (p,n)) e)) = do
   scope <- M.unions <$> get 
   case M.lookup i scope of
     Just typ -> pure . HS.Qualifier <$> tAss a typ i e 
     Nothing -> if i `M.member` ?fields
                then tStm (ABS.AnnStm a (ABS.SFieldAss i e)) -- normalize it to fieldass
-               else error "not in scope"
+               else errorPos p $ n ++ " not in scope"
 
 -- DISPATCHER: FIELD_ASSIGNMENT
 tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.L (_,f)) e)) = do

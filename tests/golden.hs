@@ -22,6 +22,7 @@ import System.FilePath ((</>), (<.>), dropExtension)
 import Data.List (isSuffixOf,isInfixOf)
 
 import Control.Exception (catch, SomeException)  --  hack for not_compile tests
+import System.Environment (withArgs)
 
 hsOutputDir = "dist"</>"test"</>"gen"</>"haskell"
 
@@ -29,12 +30,15 @@ main :: IO ()
 main = do
   createDirectoryIfMissing True hsOutputDir
 
-  to_pass <- map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents ("habs-samples"</>"to_pass")
-  to_fail <- map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents ("habs-samples"</>"to_fail")
-  to_timeout <- map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents ("habs-samples"</>"to_timeout")
-  not_compile <- map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents ("habs-samples"</>"not_compile")
+  let filterABSFiles dir = map dropExtension . filter (".abs" `isSuffixOf`) <$> getDirectoryContents dir
+
+  to_pass <-  filterABSFiles $ "habs-samples"</>"to_pass"
+  to_fail <- filterABSFiles  $"habs-samples"</>"to_fail"
+  to_timeout <- filterABSFiles $ "habs-samples"</>"to_timeout"
+  not_compile <-filterABSFiles $ "habs-samples"</>"not_compile"
 
   isSandboxed <- doesDirectoryExist ".cabal-sandbox"
+
   let (ghc,ghcExtraArgs) = if isSandboxed then ("cabal",["exec","ghc","--"]) else ("ghc",[])
   let ghcArgs sample = ghcExtraArgs ++ [ "--make"
                                        , "-O0"
@@ -69,8 +73,8 @@ main = do
                      ]
 
 
-transpile parentDir sample = do
-  print sample
+transpile parentDir sample = withArgs [] $ do -- don't pass the golden test args to ABS.Compiler.CmdOpt
+  print sample -- for travis streaming
   res <- ABS.parseFile (parentDir </> sample <.> "abs")
   case res of
     (fp, ABS.Ok (ABS.Program ms)) -> let symbolTables = globalSTs ms

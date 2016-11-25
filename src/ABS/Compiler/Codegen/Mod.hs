@@ -7,6 +7,7 @@ import ABS.Compiler.Firstpass.Base
 import ABS.Compiler.Utils
 import ABS.Compiler.Codegen.Dec (tDecl)
 import ABS.Compiler.Codegen.Stm (tMethod)
+import ABS.Compiler.CmdOpt
 
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
@@ -14,7 +15,7 @@ import Language.Haskell.Exts.QQ (hs, dec)
 
 import qualified Data.Map as M (Map, lookup, keys, empty, foldlWithKey, member, toAscList)
 import Data.List (find)
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Char (isUpper)
 
 tModul :: (?absFileName::String) 
@@ -45,17 +46,20 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   ABS.NoBlock -> id) $ concatMap tExport exports)
 
   -- fixed IMPORTS HEADER 
+  ((if nostdlib cmdOpt
+    then id
+    else 
+      (HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.StdLib"
+                     , HS.importQualified = False
+                     , HS.importAs = Nothing
+                     , HS.importLoc = noLoc', HS.importSrc = False, HS.importPkg = Nothing
+                     , HS.importSpecs = Just (True, map (HS.IVar . HS.Ident) ["Map","map","_emptyMap","put","insert","lookup","lookupMaybe","lookupUnsafe","lookupDefault","removeKey","keys","values","Set","set","_emptySet","emptySet","size","contains","union","intersection","difference","insertElement","remove","take","hasNext","next"])
+                     , HS.importSafe = False
+                     } :)) 
   ([ HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.Runtime"
                    , HS.importQualified = False
                    , HS.importAs = Nothing
                    , HS.importLoc = noLoc', HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
-                   }
-   , HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.StdLib"
-                   , HS.importQualified = False
-                   , HS.importAs = Nothing
-                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importPkg = Nothing 
-                   , HS.importSpecs = Just (True, map (HS.IVar . HS.Ident) ["Map","map","_emptyMap","put","insert","lookup","lookupMaybe","lookupUnsafe","lookupDefault","removeKey","keys","values","Set","set","_emptySet","emptySet","size","contains","union","intersection","difference","insertElement","remove","take","hasNext","next"])
-                   , HS.importSafe = False
                    } 
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Function" 
                   , HS.importQualified = False
@@ -112,7 +116,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "unsafeCoerce"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
-   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Concurrent" 
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Concurrent" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "ThreadId"])
@@ -163,7 +167,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   ]
   -- TRANSLATED IMPORTS OF THE ABS-PROGRAM
   ++ concatMap tImport imports
-  ) 
+  )) 
 
  -- TRANSLATED TOP-LEVEL DECLARATIONS
  (let ?st = st 
@@ -238,17 +242,21 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                                                  False False Nothing Nothing -- irrelevant
                                                  (Just (True, [HS.IVar $ HS.Ident "main"]))] -- hiding main
 
-    tImport (ABS.AnyImport _ityp qas) = map (\ qa ->
+    tImport (ABS.AnyImport _ityp qas) = mapMaybe (\ qa ->
                                             let (prefix, iden) = splitQA qa
-                                            in HS.ImportDecl (mkLocFromQA qa) (HS.ModuleName prefix)
-                                               True -- qualified?
-                                               False False Nothing Nothing -- irrelevant
-                                               (Just (False, tImport' True prefix iden)) -- only import this 1 symbol (normally many,  but grammar limitation)
+                                            in if prefix == "ABS.StdLib." && not (nostdlib cmdOpt)
+                                               then Nothing
+                                               else Just $ HS.ImportDecl (mkLocFromQA qa) (HS.ModuleName prefix)
+                                                           True -- qualified?
+                                                           False False Nothing Nothing -- irrelevant
+                                                           (Just (False, tImport' True prefix iden)) -- only import this 1 symbol (normally many,  but grammar limitation)
                                                     ) qas
 
         
 
-    tImport (ABS.AnyFromImport _ityp qas qu) = [HS.ImportDecl (mkLocFromQU qu) (HS.ModuleName $ showQU qu) 
+    tImport (ABS.AnyFromImport _ityp qas qu) = if showQU qu == "ABS.StdLib" && not (nostdlib cmdOpt)
+                                               then [] -- ignore if it is absstdlib
+                                               else [HS.ImportDecl (mkLocFromQU qu) (HS.ModuleName $ showQU qu) 
                                                   False -- qualified?
                                                   False False Nothing Nothing -- irrelevant
                                                   (Just (False, concatMap (tImport' False (showQU qu) . showQA) qas))] -- only  import those symbols

@@ -97,5 +97,6 @@ test-suite golden
     transformers,
     -- for filepath manipulation when spitting .hs files
     filepath,
-    directory
+    directory,
+    cmdargs
   hs-source-dirs: tests, src
