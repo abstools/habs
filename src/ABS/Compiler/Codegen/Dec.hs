@@ -11,7 +11,7 @@ import Language.Haskell.Exts.QQ (hs, dec, pat, ty)
 
 import Control.Applicative ((<|>))
 import Control.Monad.Trans.Reader (runReader)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, isJust)
 import qualified Data.Map as M
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
@@ -233,7 +233,9 @@ tDecl (ABS.DDataPoly (ABS.U (dpos,tid)) tyvars constrs) =  HS.DataDecl (mkLoc dp
                 ABS.ParamConstrIdent (ABS.U (_,cid)) args -> HS.QualConDecl noLoc' [] [] (HS.ConDecl (HS.Ident cid) (map (HS.TyBang HS.BangedTy . tTypeOrTyVar tyvars . typOfConstrType) args))) constrs) -- TODO: maybe only allow Banged Int,Double,... like the class-datatype
 
           -- Deriving
-          [(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])]
+          (if hasInterfForeign constrs
+           then [(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])]
+           else [(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Ord", []),  (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])])
 
           -- Extra record-accessor functions
           : map (\ (ABS.L (_,fname), consname, idx, len) ->  
@@ -250,6 +252,29 @@ tDecl (ABS.DDataPoly (ABS.U (dpos,tid)) tyvars constrs) =  HS.DataDecl (mkLoc dp
                                                                             ABS.RecordConstrType _ fid -> (fid, cid, idx, len):acc) [] (zip args [0..])
               ) constrs )
     where
+      hasInterfForeign :: [ABS.ConstrIdent] -> Bool
+      hasInterfForeign [] = False
+      hasInterfForeign (ABS.SinglConstrIdent _ : constrs') = hasInterfForeign constrs' -- ignore singleconstrident
+      hasInterfForeign (ABS.ParamConstrIdent _ params : constrs') =  
+       let monomorphicTypes = filter (\case 
+                                  ABS.U_ u -> u `notElem` tyvars 
+                                  _ -> True) $ collectTypes params
+       in foldl (\ acc qu ->
+        let (prefix, ident) = splitQU qu
+        in acc || isJust (if null prefix
+                          then M.lookup (SN ident Nothing) ?st
+                          else M.lookup (SN ident (Just (prefix, False))) ?st <|> M.lookup (SN ident (Just (prefix, True))) ?st)
+        ) False monomorphicTypes || hasInterfForeign constrs' 
+        
+      collectTypes :: [ABS.ConstrType] -> [ABS.QU]
+      collectTypes = concatMap (\case
+                                  ABS.EmptyConstrType t -> collectType t
+                                  ABS.RecordConstrType t _ -> collectType t)
+      collectType :: ABS.T -> [ABS.QU]
+      collectType (ABS.TPoly _ ts) = concatMap collectType ts
+      collectType (ABS.TSimple qu) = [qu]
+      collectType _ = []
+
       typOfConstrType :: ABS.ConstrType -> ABS.T
       typOfConstrType (ABS.EmptyConstrType typ) = typ
       typOfConstrType (ABS.RecordConstrType typ _) = typ
