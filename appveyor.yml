@@ -1,6 +1,9 @@
 cache:
 - "c:\\sr -> appveyor.yml" #
 
+install:
+  git submodule update --init --recursive
+
 build: off
 
 before_test:
