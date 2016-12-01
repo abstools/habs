@@ -1,0 +1,24 @@
+resolver: lts-7.11
+packages:
+  - '.'
+  - 'habs-parser/'
+  - 'habs-stdlib/'
+  - 'habs-runtime/'
+extra-deps:
+  - haskell-src-exts-qq-0.7
+  - unagi-chan-0.4.0.0
+flags:
+  habs-runtime:
+    wait-all-cogs: true
+extra-package-dbs: []
+
+# will use system-wide installed GHC (e.g. HaskellPlatform)
+# system-ghc: true
+
+# Override the architecture used by stack, especially useful on Windows
+# arch: i386
+# arch: x86_64
+#
+# Extra directories used by stack for building
+# extra-include-dirs: [/path/to/dir]
+# extra-lib-dirs: [/path/to/dir]
