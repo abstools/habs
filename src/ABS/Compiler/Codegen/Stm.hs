@@ -1664,8 +1664,8 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
                                                                                                then [hs|(obj' <!!> $mapplied)|] -- optimized, fire&forget
                                                                                                else [hs|(obj' <!> $mapplied)|]
                  in if ident `M.member` formalParams
-                    then [hs|($(maybeThis fields mwrapped)) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
-                    else [hs|($(maybeThis fields mwrapped)) =<< (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))|]
+                    then maybeThis fields [hs|($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
+                    else maybeThis fields [hs|($mwrapped) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
             else let mapplied = runReader (let ?vars = localVars in foldlM
                                                     (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
                                                     [hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname)|]                                                    
