@@ -1560,7 +1560,7 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
           (_,fields,onlyPureDeps) <- depends args
           let (prefix, iident) = splitQU qtyp
               iname = (if null prefix then HS.UnQual else HS.Qual $ HS.ModuleName prefix) $ HS.Ident iident
-          pure $ maybeLift $ 
+          pure $ maybeLift $ maybeThis fields $ 
             if onlyPureDeps
             then let mapplied = runReader (let ?tyvars = [] in foldlM
                                                          (\ acc nextArg -> HS.App acc <$> tPureExp nextArg)
@@ -1569,8 +1569,8 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
                                                                                                then [hs|(obj' <!!> $mapplied)|] -- optimized, fire&forget
                                                                                                else [hs|(obj' <!> $mapplied)|]
                  in if ident `M.member` formalParams
-                    then maybeThis fields [hs|($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
-                    else maybeThis fields [hs|($mwrapped) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
+                    then [hs|($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
+                    else [hs|($mwrapped) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
             else let mapplied = runReader (let ?vars = localVars in foldlM
                                                     (\ acc nextArg -> tStmExp nextArg >>= \ targ -> pure [hs|$acc <*> $targ|])
                                                     [hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident mname)|]                                                    
@@ -1579,8 +1579,8 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = case pexp of
                                                                                                  then [hs|(obj' <!!>) =<< $mapplied|]
                                                                                                  else [hs|(obj' <!>) =<< $mapplied|]
                  in if ident `M.member` formalParams
-                    then [hs|($(maybeThis fields mwrapped)) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
-                    else [hs|($(maybeThis fields mwrapped)) =<< (I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar))|]
+                    then [hs|($mwrapped) $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
+                    else [hs|($mwrapped) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident calleeVar)|]
       Just _ ->  errorPos p "caller variable not of interface type"
       Nothing -> if ident `M.member` ?fields
                 then tEffExp a (ABS.AsyncMethCall (ABS.EField ident) (ABS.L (p,mname)) args) isAlone -- rewrite it to this.var
