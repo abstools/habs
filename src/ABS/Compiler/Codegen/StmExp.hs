@@ -237,21 +237,14 @@ tStmExp (ABS.ELit lit) = pure $ case lit of
 ------------
 
 -- | upcasting an expression
+-- | upcasting an expression
 maybePureUpcast :: (?st::SymbolTable) => ABS.T -> HS.Exp -> HS.Exp
 maybePureUpcast t = case t of
   ABS.TSimple (ABS.U_ (ABS.U (_,"Int"))) -> (\ e -> [hs|I'.pure (I'.fromIntegral $e)|])
-  ABS.TSimple qtyp -> let (prefix, iident) = splitQU qtyp 
-                     in case find (\ (SN ident' mmodule,_) -> iident == ident' && maybe (null prefix) ((prefix,True) ==) mmodule) (M.assocs ?st) of
-                          Just (_,SV (Interface _ _) _) -> (\ e -> [hs|I'.pure (up' $e)|]) -- is interface
-                          _ -> (\ e -> [hs|I'.pure $e|])
-  _ -> (\ e -> [hs|I'.pure $e|])
+  _ -> HS.App [hs|I'.pure|] . maybe id (\ i -> HS.Paren . HS.App (putUp i)) (buildInfo t)
 
 
 maybeEffUpcast :: (?st::SymbolTable) => ABS.T -> HS.Exp -> HS.Exp
 maybeEffUpcast t = case t of
   ABS.TSimple (ABS.U_ (ABS.U (_,"Int"))) -> (\ e -> [hs|(I'.fromIntegral <$!> $e)|])
-  ABS.TSimple qtyp -> let (prefix, iident) = splitQU qtyp 
-                     in case find (\ (SN ident' mmodule,_) -> iident == ident' && maybe (null prefix) ((prefix,True) ==) mmodule) (M.assocs ?st) of
-                          Just (_,SV (Interface _ _) _) -> (\ e -> [hs|(up' <$!> $e)|]) -- is interface
-                          _ -> id
-  _ -> id
+  _ -> maybe id (\ x -> HS.Paren . HS.InfixApp (putUp x) (HS.QVarOp $ HS.UnQual $ HS.Symbol "<$!>")) $ buildInfo t

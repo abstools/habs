@@ -34,6 +34,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                              , HS.Ident "PartialTypeSignatures" -- for inferring Eq,Ord contexts. Requires GHC>=7.10
                              , HS.Ident "LambdaCase" -- easier codegen for exceptions extension
                              , HS.Ident "OverloadedStrings" -- for Scotty REST API
+                             , HS.Ident "TemplateHaskell" -- for generating subtyping fmaps through genifunctors
                              ]
     -- -fwarn-missing-methods:  for making error the missing ABS class methods
     -- -fno-ignore-asserts:  for not ignoring asserts (which is the default in Haskell)
@@ -160,6 +161,12 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "put"])
+                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  }
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Generics.Genifunctors" 
+                  , HS.importQualified = True
+                  , HS.importAs = Just (HS.ModuleName "I'")
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "genFmap"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   ]
