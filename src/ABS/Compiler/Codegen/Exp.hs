@@ -212,8 +212,4 @@ tPureExp (ABS.ELit lit) = pure $ case lit of
 maybeUpcast :: (?st::SymbolTable) => ABS.T -> HS.Exp -> HS.Exp
 maybeUpcast t = case t of
   ABS.TSimple (ABS.U_ (ABS.U (_,"Int"))) -> (\ e -> [hs|(I'.fromIntegral $e)|])
-  ABS.TSimple qtyp -> let (prefix, iident) = splitQU qtyp 
-                      in case find (\ (SN ident' mmodule,_) -> iident == ident' && maybe (null prefix) ((prefix,True) ==) mmodule) (M.assocs ?st) of
-                          Just (_,SV (Interface _ _) _) -> (\ e -> [hs|(up' $e)|]) -- is interface
-                          _ -> id
-  _ -> id
+  _ -> maybe id (\ i -> HS.Paren . HS.App (putUp i)) (buildInfo t)

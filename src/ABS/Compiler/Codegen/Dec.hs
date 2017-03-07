@@ -236,9 +236,13 @@ tDecl (ABS.DDataPoly (ABS.U (dpos,tid)) tyvars constrs) =  HS.DataDecl (mkLoc dp
           (if hasInterfForeign constrs
            then [(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])]
            else [(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Ord", []),  (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])])
-
+          -- Generate a GeniFunctor if it is a polymorphic datatype
+          : (if null tyvars 
+             then [] 
+             else [HS.SpliceDecl noLoc' [hs|return []|]
+                  ,HS.PatBind noLoc' (HS.PVar $ HS.Ident $ "fmap'" ++ tid) (HS.UnGuardedRhs $ HS.SpliceExp $ HS.ParenSplice $ [hs|I'.genFmap|] `HS.App` HS.TypQuote (HS.UnQual $ HS.Ident tid)) Nothing])
           -- Extra record-accessor functions
-          : map (\ (ABS.L (_,fname), consname, idx, len) ->  
+          ++ map (\ (ABS.L (_,fname), consname, idx, len) ->  
                      HS.FunBind [HS.Match noLoc' (HS.Ident fname) [HS.PApp (HS.UnQual (HS.Ident consname)) (replicate idx HS.PWildCard ++ [HS.PVar (HS.Ident "a")] ++ replicate (len - idx - 1) HS.PWildCard)] Nothing (HS.UnGuardedRhs (HS.Var (HS.UnQual (HS.Ident "a")))) Nothing,
                                  HS.Match noLoc' (HS.Ident fname) [HS.PWildCard] Nothing (HS.UnGuardedRhs [hs|I'.throw (RecSelError (concatenate "Data constructor does not have accessor " $(HS.Lit $ HS.String fname)))|]) Nothing
                      ]) (
