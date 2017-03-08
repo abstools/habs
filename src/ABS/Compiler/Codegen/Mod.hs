@@ -5,7 +5,7 @@ module ABS.Compiler.Codegen.Mod
 
 import ABS.Compiler.Firstpass.Base
 import ABS.Compiler.Utils
-import ABS.Compiler.Codegen.Dec (tDecl)
+import ABS.Compiler.Codegen.Dec (tDataDecl,tDecl)
 import ABS.Compiler.Codegen.Stm (tMethod)
 import ABS.Compiler.CmdOpt
 
@@ -14,7 +14,7 @@ import qualified Language.Haskell.Exts.Syntax as HS
 import Language.Haskell.Exts.QQ (hs, dec)
 
 import qualified Data.Map as M (Map, lookup, keys, empty, foldlWithKey, member, toAscList)
-import Data.List (find)
+import Data.List (find, partition)
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Char (isUpper)
 
@@ -176,9 +176,20 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
 
  -- TRANSLATED TOP-LEVEL DECLARATIONS
  (let ?st = st 
-  in [dec|default (Int,Rat)|] -- better for type inference of numeric variables
-     : concatMap (\ (ABS.AnnDecl _ d) -> tDecl d) decls
-     ++ tMain maybeMain)
+  in let (dataDecls, restDecls) = partition (\case 
+                                            ABS.DData _ _ -> True
+                                            ABS.DDataPoly _ _ _ -> True
+                                            _ -> False) $ map (\ (ABS.AnnDecl _ d) -> d) decls
+     in [dec|default (Int,Rat)|] -- better for type inference of numeric variables
+        : concatMap tDataDecl dataDecls
+        ++ [HS.SpliceDecl noLoc' [hs|return []|]]
+        -- Generate a GeniFunctor if it is a polymorphic datatype
+        ++ foldl (\ acc -> \case 
+                              ABS.DDataPoly (ABS.U (_,tid)) _ _ -> HS.PatBind noLoc' (HS.PVar $ HS.Ident $ "fmap'" ++ tid) (HS.UnGuardedRhs $ 
+                                                                      HS.SpliceExp $ HS.ParenSplice $ [hs|I'.genFmap|] `HS.App` HS.TypQuote (HS.UnQual $ HS.Ident tid)) Nothing : acc
+                              _ -> acc) [] dataDecls
+        ++ concatMap tDecl restDecls 
+        ++ tMain maybeMain)
 
   where
     thisModuleName = showQU thisModuleQU
