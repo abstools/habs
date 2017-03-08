@@ -17,12 +17,77 @@ import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Data.List (find)
 
+import Control.Exception (assert)
+#define total assert False (error "This error should not happen. Contact developers")
+
+
+-- Datatypes
+tDataDecl :: (?absFileName::String, ?st::SymbolTable) => ABS.Decl -> [HS.Decl]
+tDataDecl (ABS.DData tid constrs) =  tDataDecl (ABS.DDataPoly tid [] constrs) -- Normalization: just parametric datatype with empty list of type variables
+tDataDecl (ABS.DDataPoly (ABS.U (dpos,tid)) tyvars constrs) =  HS.DataDecl (mkLoc dpos) HS.DataType [] (HS.Ident tid) 
+
+          -- Type Variables
+          (map (\ (ABS.U (_,varid)) -> HS.UnkindedVar $ HS.Ident $ headToLower varid) tyvars)
+
+          -- Data Constructors
+          (map (\case
+                ABS.SinglConstrIdent (ABS.U (_,cid)) -> HS.QualConDecl noLoc' [] [] (HS.ConDecl (HS.Ident cid) []) 
+                ABS.ParamConstrIdent (ABS.U (_,cid)) args -> HS.QualConDecl noLoc' [] [] (HS.ConDecl (HS.Ident cid) (map (HS.TyBang HS.BangedTy . tTypeOrTyVar tyvars . typOfConstrType) args))) constrs) -- TODO: maybe only allow Banged Int,Double,... like the class-datatype
+
+          -- Deriving
+          (if hasInterfForeign constrs
+           then [(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])]
+           else [(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Ord", []),  (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])])
+          -- Extra record-accessor functions
+          : map (\ (ABS.L (_,fname), consname, idx, len) ->  
+                     HS.FunBind [HS.Match noLoc' (HS.Ident fname) [HS.PApp (HS.UnQual (HS.Ident consname)) (replicate idx HS.PWildCard ++ [HS.PVar (HS.Ident "a")] ++ replicate (len - idx - 1) HS.PWildCard)] Nothing (HS.UnGuardedRhs (HS.Var (HS.UnQual (HS.Ident "a")))) Nothing,
+                                 HS.Match noLoc' (HS.Ident fname) [HS.PWildCard] Nothing (HS.UnGuardedRhs [hs|I'.throw (RecSelError (concatenate "Data constructor does not have accessor " $(HS.Lit $ HS.String fname)))|]) Nothing
+                     ]) (
+             concatMap (\case
+               ABS.SinglConstrIdent _ -> []
+               ABS.ParamConstrIdent (ABS.U (_,cid)) args -> -- taking the indices of fields
+                                         let len = length args
+                                         in
+                                            foldl (\ acc (field, idx) ->  case field of
+                                                                            ABS.EmptyConstrType _ -> acc
+                                                                            ABS.RecordConstrType _ fid -> (fid, cid, idx, len):acc) [] (zip args [0..])
+              ) constrs )
+    where
+      hasInterfForeign :: [ABS.ConstrIdent] -> Bool
+      hasInterfForeign [] = False
+      hasInterfForeign (ABS.SinglConstrIdent _ : constrs') = hasInterfForeign constrs' -- ignore singleconstrident
+      hasInterfForeign (ABS.ParamConstrIdent _ params : constrs') =  
+       let monomorphicTypes = filter (\case 
+                                  ABS.U_ u -> u `notElem` tyvars 
+                                  _ -> True) $ collectTypes params
+       in foldl (\ acc qu ->
+        let (prefix, ident) = splitQU qu
+        in acc || isJust (if null prefix
+                          then M.lookup (SN ident Nothing) ?st
+                          else M.lookup (SN ident (Just (prefix, False))) ?st <|> M.lookup (SN ident (Just (prefix, True))) ?st)
+        ) False monomorphicTypes || hasInterfForeign constrs' 
+        
+      collectTypes :: [ABS.ConstrType] -> [ABS.QU]
+      collectTypes = concatMap (\case
+                                  ABS.EmptyConstrType t -> collectType t
+                                  ABS.RecordConstrType t _ -> collectType t)
+      collectType :: ABS.T -> [ABS.QU]
+      collectType (ABS.TPoly _ ts) = concatMap collectType ts
+      collectType (ABS.TSimple qu) = [qu]
+      collectType _ = []
+
+      typOfConstrType :: ABS.ConstrType -> ABS.T
+      typOfConstrType (ABS.EmptyConstrType typ) = typ
+      typOfConstrType (ABS.RecordConstrType typ _) = typ
+
+tDataDecl _ = total
+
+
 tDecl :: (?absFileName::String, ?st::SymbolTable) => ABS.Decl -> [HS.Decl]
 
 -- Normalizations
 tDecl (ABS.DFun fReturnTyp fid params body) = tDecl (ABS.DFunPoly fReturnTyp fid [] params body) -- normalize to no type variables
 tDecl (ABS.DType tid typ) = tDecl (ABS.DTypePoly tid [] typ) -- type synonym with no type variables
-tDecl (ABS.DData tid constrs) =  tDecl (ABS.DDataPoly tid [] constrs) -- just parametric datatype with empty list of type variables
 tDecl (ABS.DInterf tid ms) = tDecl (ABS.DExtends tid [] ms) 
 tDecl (ABS.DClass tident fdecls maybeBlock mdecls) = tDecl (ABS.DClassParImplements tident [] [] fdecls maybeBlock mdecls)
 tDecl (ABS.DClassPar tident params fdecls maybeBlock mdecls) = tDecl (ABS.DClassParImplements tident params [] fdecls maybeBlock mdecls)
@@ -221,68 +286,6 @@ tDecl (ABS.DTypePoly (ABS.U (tpos,tid)) tyvars typ) = [HS.TypeDecl (mkLoc tpos) 
                                                                  (tTypeOrTyVar tyvars typ)
                                                           ]
 
--- Datatypes
-tDecl (ABS.DDataPoly (ABS.U (dpos,tid)) tyvars constrs) =  HS.DataDecl (mkLoc dpos) HS.DataType [] (HS.Ident tid) 
-
-          -- Type Variables
-          (map (\ (ABS.U (_,varid)) -> HS.UnkindedVar $ HS.Ident $ headToLower varid) tyvars)
-
-          -- Data Constructors
-          (map (\case
-                ABS.SinglConstrIdent (ABS.U (_,cid)) -> HS.QualConDecl noLoc' [] [] (HS.ConDecl (HS.Ident cid) []) 
-                ABS.ParamConstrIdent (ABS.U (_,cid)) args -> HS.QualConDecl noLoc' [] [] (HS.ConDecl (HS.Ident cid) (map (HS.TyBang HS.BangedTy . tTypeOrTyVar tyvars . typOfConstrType) args))) constrs) -- TODO: maybe only allow Banged Int,Double,... like the class-datatype
-
-          -- Deriving
-          (if hasInterfForeign constrs
-           then [(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])]
-           else [(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Ord", []),  (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])])
-          -- Generate a GeniFunctor if it is a polymorphic datatype
-          : (if null tyvars 
-             then [] 
-             else [HS.SpliceDecl noLoc' [hs|return []|]
-                  ,HS.PatBind noLoc' (HS.PVar $ HS.Ident $ "fmap'" ++ tid) (HS.UnGuardedRhs $ HS.SpliceExp $ HS.ParenSplice $ [hs|I'.genFmap|] `HS.App` HS.TypQuote (HS.UnQual $ HS.Ident tid)) Nothing])
-          -- Extra record-accessor functions
-          ++ map (\ (ABS.L (_,fname), consname, idx, len) ->  
-                     HS.FunBind [HS.Match noLoc' (HS.Ident fname) [HS.PApp (HS.UnQual (HS.Ident consname)) (replicate idx HS.PWildCard ++ [HS.PVar (HS.Ident "a")] ++ replicate (len - idx - 1) HS.PWildCard)] Nothing (HS.UnGuardedRhs (HS.Var (HS.UnQual (HS.Ident "a")))) Nothing,
-                                 HS.Match noLoc' (HS.Ident fname) [HS.PWildCard] Nothing (HS.UnGuardedRhs [hs|I'.throw (RecSelError (concatenate "Data constructor does not have accessor " $(HS.Lit $ HS.String fname)))|]) Nothing
-                     ]) (
-             concatMap (\case
-               ABS.SinglConstrIdent _ -> []
-               ABS.ParamConstrIdent (ABS.U (_,cid)) args -> -- taking the indices of fields
-                                         let len = length args
-                                         in
-                                            foldl (\ acc (field, idx) ->  case field of
-                                                                            ABS.EmptyConstrType _ -> acc
-                                                                            ABS.RecordConstrType _ fid -> (fid, cid, idx, len):acc) [] (zip args [0..])
-              ) constrs )
-    where
-      hasInterfForeign :: [ABS.ConstrIdent] -> Bool
-      hasInterfForeign [] = False
-      hasInterfForeign (ABS.SinglConstrIdent _ : constrs') = hasInterfForeign constrs' -- ignore singleconstrident
-      hasInterfForeign (ABS.ParamConstrIdent _ params : constrs') =  
-       let monomorphicTypes = filter (\case 
-                                  ABS.U_ u -> u `notElem` tyvars 
-                                  _ -> True) $ collectTypes params
-       in foldl (\ acc qu ->
-        let (prefix, ident) = splitQU qu
-        in acc || isJust (if null prefix
-                          then M.lookup (SN ident Nothing) ?st
-                          else M.lookup (SN ident (Just (prefix, False))) ?st <|> M.lookup (SN ident (Just (prefix, True))) ?st)
-        ) False monomorphicTypes || hasInterfForeign constrs' 
-        
-      collectTypes :: [ABS.ConstrType] -> [ABS.QU]
-      collectTypes = concatMap (\case
-                                  ABS.EmptyConstrType t -> collectType t
-                                  ABS.RecordConstrType t _ -> collectType t)
-      collectType :: ABS.T -> [ABS.QU]
-      collectType (ABS.TPoly _ ts) = concatMap collectType ts
-      collectType (ABS.TSimple qu) = [qu]
-      collectType _ = []
-
-      typOfConstrType :: ABS.ConstrType -> ABS.T
-      typOfConstrType (ABS.EmptyConstrType typ) = typ
-      typOfConstrType (ABS.RecordConstrType typ _) = typ
-
          
 -- Exception datatypes
 tDecl (ABS.DException constr) =
@@ -374,5 +377,5 @@ tDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (mkLoc ipos)
                        ])
                       (M.keys all_extends)
                      _ -> error "development error at firstpass"
-                    
-    
+                       
+tDecl _ = total
