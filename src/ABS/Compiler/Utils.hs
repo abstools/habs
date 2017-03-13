@@ -108,6 +108,7 @@ data Info = Up
 
 buildInfo :: (?st :: SymbolTable) => ABS.T -> Maybe Info
 buildInfo ABS.TInfer = todo
+buildInfo (ABS.TPoly (ABS.U_ (ABS.U (_,"Fut"))) _) = Nothing -- TODO: Fut<A> should be covariant, but for implementation reasons (MVar a) it is invariant
 buildInfo (ABS.TPoly qu ts) = let (l, buildArgs) = foldl (\ (i,acc) t -> maybe (i+1,acc) (\x -> (i+1,(i,x):acc)) (buildInfo t) ) (0,[]) ts
                               in if null buildArgs
                                  then Nothing
@@ -135,6 +136,6 @@ buildInfo t@(ABS.TSimple _) = if isInterface t
 putUp :: Info -> HS.Exp
 putUp Up = [hs|up'|]
 putUp (Deep functorName functorWidth deeps) = foldl 
-                                              (\ acc i -> HS.App acc $ maybe [hs|id|] (HS.Paren . putUp) (lookup i deeps))
+                                              (\ acc i -> HS.App acc $ maybe [hs|I'.id|] (HS.Paren . putUp) (lookup i deeps))
                                               (HS.Var $ HS.UnQual $ HS.Ident $ "fmap'" ++ functorName)
                                               [0..functorWidth-1]
