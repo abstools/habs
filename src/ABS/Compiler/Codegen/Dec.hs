@@ -137,10 +137,10 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
     -- the class params serve as input-args to the smart constructor
     (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident $ pid ++ "'this")) cparams) Nothing 
     -- rhs
-    (HS.UnGuardedRhs $ runReader (let ?tyvars = []
-                                      ?cname = ""  -- it is transformed to pure code, so no need for clsName
-                                      ?fields = fields
-                                  in tPureExp $ transformFieldBody ldecls) M.empty) Nothing]
+    (HS.UnGuardedRhs $ fst $ runReader (let ?tyvars = []
+                                            ?cname = ""  -- it is transformed to pure code, so no need for clsName
+                                            ?fields = fields
+                                        in tPureExp $ transformFieldBody ldecls) M.empty) Nothing]
   ]
   ++ -- The init'Class function
   [ HS.TypeSig noLoc' [HS.Ident $ "init'" ++ clsName] (HS.TyApp 

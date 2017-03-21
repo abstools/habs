@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, QuasiQuotes, ImplicitParams #-}
+{-# LANGUAGE CPP, ImplicitParams #-}
 module ABS.Compiler.Utils 
     ( appendL
     , showQL
@@ -11,16 +11,12 @@ module ABS.Compiler.Utils
     , headToLower
     , errorPos, warnPos, showPos
     , noLoc', mkLoc, mkLocFromQU, mkLocFromQA
-    , buildInfo, putUp
     ) where
 
 import qualified ABS.AST as ABS
 import ABS.Compiler.Firstpass.Base
-import Language.Haskell.Exts.QQ (hs)
 import Language.Haskell.Exts.SrcLoc (SrcLoc (..))
-import qualified Language.Haskell.Exts.Syntax as HS
 import qualified Data.Map as M
-import Data.List (find)
 
 import Data.Char (toLower)
 import Debug.Trace (trace)
@@ -98,44 +94,3 @@ mkLocFromQA qa = SrcLoc ?absFileName (lineQA qa) 1
 -- | from BNFC tokens' position
 mkLoc :: (?absFileName::String) => (Int,Int) -> SrcLoc
 mkLoc (line,column) = SrcLoc ?absFileName line column
-
-
-
--- Used for subtyping
-
-data Info = Up
-          | Deep String Int [(Int,Info)]
-
-buildInfo :: (?st :: SymbolTable) => ABS.T -> Maybe Info
-buildInfo ABS.TInfer = todo
-buildInfo (ABS.TPoly (ABS.U_ (ABS.U (_,"Fut"))) _) = Nothing -- TODO: Fut<A> should be covariant, but for implementation reasons (MVar a) it is invariant
-buildInfo (ABS.TPoly qu ts) = let (l, buildArgs) = foldl (\ (i,acc) t -> maybe (i+1,acc) (\x -> (i+1,(i,x):acc)) (buildInfo t) ) (0,[]) ts
-                              in if null buildArgs
-                                 then Nothing
-                                 else Just $ Deep (showQU qu) l buildArgs
-buildInfo t@(ABS.TSimple _) = if isInterface t
-                              then Just Up
-                              else Nothing
-  where
-    isInterface :: (?st::SymbolTable) => ABS.T -> Bool
-    isInterface t = let
-                  qtyp = case t of
-                           ABS.TSimple qtyp' -> qtyp'
-                           ABS.TPoly qtyp' _ -> qtyp'
-                           ABS.TInfer -> todo
-                  (prefix, ident) = splitQU qtyp
-                  mSymbolType = if null prefix
-                                then snd <$> find (\ (SN ident' modul,_) -> ident == ident' && maybe True (not . snd) modul) (M.assocs ?st)
-                                else M.lookup (SN ident (Just (prefix, True))) ?st 
-                in case mSymbolType of
-                     Just (SV (Interface _ _) _) -> True
-                     _ -> False
-
-
-
-putUp :: Info -> HS.Exp
-putUp Up = [hs|up'|]
-putUp (Deep functorName functorWidth deeps) = foldl 
-                                              (\ acc i -> HS.App acc $ maybe [hs|I'.id|] (HS.Paren . putUp) (lookup i deeps))
-                                              (HS.Var $ HS.UnQual $ HS.Ident $ "fmap'" ++ functorName)
-                                              [0..functorWidth-1]

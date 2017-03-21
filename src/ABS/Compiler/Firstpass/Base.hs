@@ -1,5 +1,6 @@
 module ABS.Compiler.Firstpass.Base where
 
+import ABS.AST (U,T)
 import Data.Map (Map)
 
 type ModuleName = String
@@ -21,11 +22,11 @@ data SymbolValue = SV SymbolType IsExported
                  deriving Show
 
 -- | The different symbol types
-data SymbolType = Function
+data SymbolType = Function [U] [T] T -- ^ tyvars, input types, output type
                 | Datatype
-                | Datacons String -- ^ from which datatype it comes (required by Haskell module system)
+                | Datacons String [U] [T] T -- ^ from which datatype it comes (required by Haskell module system),  tyvars, input types, output type
                 | Exception
-                | Class
+                | Class [T]
                 | Interface [(String,Maybe [String])] (Map SymbolName [(String,Maybe [String])]) -- ^ its direct method names, http-callable formal parameters & map of *all* extends interfaces to their own methods, http-callable formal parameters
                 | Foreign
                   deriving Show

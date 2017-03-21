@@ -109,12 +109,12 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
             f (DType (U (_, s)) _) = insertDup (SN s Nothing) 
                                                        (SV Datatype sureExported)
 
-            f (DData (U (_, s)) cs) = insertDup (SN s Nothing) 
+            f (DDataPoly i@(U (_, s)) tyvars cs) = insertDup (SN s Nothing) 
                                                         (SV Datatype sureExported)
-                                              . (\ st -> foldl (flip (f' s)) st cs) -- add also its constructors
+                                              . (\ st -> foldl (flip (f' i tyvars)) st cs) -- add also its constructors
 
-            f (DFun _ (L (_, s)) _ _) = insertDup (SN s Nothing) 
-                                                          (SV Function sureExported)
+            f (DFunPoly ot (L (_, s)) tyvars params _) = insertDup (SN s Nothing) 
+                                                          (SV (Function tyvars (map (\ (FormalPar t _) -> t) params) ot) sureExported)
 
             f (DInterf (U (_, s)) ms') = insertDup (SN s Nothing) 
               (SV (Interface 
@@ -127,30 +127,30 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                                                 M.empty) -- no super interfaces
                                                             sureExported)
 
-            f (DClass (U (_, s)) _ _ _) = insertDup (SN s Nothing) 
-                                                            (SV Class sureExported)
+            f (DClassParImplements (U (_, s)) _ interfs _ _ _) = insertDup (SN s Nothing) 
+                                                            (SV (Class (map TSimple interfs)) sureExported)
 
             f (DException (SinglConstrIdent (U (_, s)))) = insertDup (SN s Nothing) 
                                                                     (SV Exception sureExported)
 
             -- synonyms
-            f (DFunPoly _ i _ _ _) = f (DFun undefined i undefined undefined)
-            f (DDataPoly i _ cs) = f (DData i cs)
+            f (DFun t l params _) = f (DFunPoly t l [] params undefined)
+            f (DData i cs) = f (DDataPoly i [] cs)
             f (DTypePoly i _ _) = f (DType i undefined)
-            f (DClassPar i _ _ _ _) = f (DClass i undefined undefined undefined)
-            f (DClassImplements i _ _ _ _) = f (DClass i undefined undefined undefined)
-            f (DClassParImplements i _ _ _ _ _) = f (DClass i undefined undefined undefined)
+            f (DClass i _ _ _) = f (DClassParImplements i [] [] undefined undefined undefined)
+            f (DClassPar i ps _ _ _) = f (DClassParImplements i ps [] undefined undefined undefined)
+            f (DClassImplements i interfs _ _ _) = f (DClassParImplements i [] interfs undefined undefined undefined)
             f (DExtends i _ ms') = f (DInterf i ms') -- the super interfaces are filled later by the function extends
             f (DException (ParamConstrIdent i _)) = f (DException (SinglConstrIdent i))               
 
             -- data constructors
-            f' dname (SinglConstrIdent (U (_, s))) acc = insertDup (SN s Nothing) 
-                                                              (SV (Datacons dname) sureExported) acc
-            f' dname (ParamConstrIdent i args) acc = 
+            f' d@(U (_,dname)) tyvars (SinglConstrIdent (U (_, s))) acc = insertDup (SN s Nothing) 
+                                                              (SV (Datacons dname tyvars [] (if null tyvars then TSimple (U_ d) else TPoly (U_ d) (map (TSimple . U_) tyvars))) sureExported) acc
+            f' d tyvars (ParamConstrIdent i args) acc = 
               -- add also all the accessors as functions
               foldl (\ acc' arg -> case arg of
-                                    RecordConstrType _ (L (_,s)) -> insertDup (SN s Nothing) (SV Function sureExported) acc'
-                                    _ -> acc') (f' dname (SinglConstrIdent i) acc) args
+                                    RecordConstrType t (L (_,s)) -> insertDup (SN s Nothing) (SV (Function tyvars [if null tyvars then TSimple (U_ d) else TPoly (U_ d) (map (TSimple . U_) tyvars)] t) sureExported) acc'
+                                    _ -> acc') (f' d tyvars (SinglConstrIdent i) acc) args
 
             -- this is needed because, "export *;" will export *ONLY* the locally-defined symbols
             -- later, the "exports" Haskell function will check also for individual (non-star) exports
