@@ -142,15 +142,22 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
             f (DClassImplements i interfs _ _ _) = f (DClassParImplements i [] interfs undefined undefined undefined)
             f (DExtends i _ ms') = f (DInterf i ms') -- the super interfaces are filled later by the function extends
             f (DException (ParamConstrIdent i _)) = f (DException (SinglConstrIdent i))               
+            f' d tyvars (SinglConstrIdent u) acc = f' d tyvars (ParamConstrIdent u []) acc
 
             -- data constructors
-            f' d@(U (_,dname)) tyvars (SinglConstrIdent (U (_, s))) acc = insertDup (SN s Nothing) 
-                                                              (SV (Datacons dname tyvars [] (if null tyvars then TSimple (U_ d) else TPoly (U_ d) (map (TSimple . U_) tyvars))) sureExported) acc
-            f' d tyvars (ParamConstrIdent i args) acc = 
-              -- add also all the accessors as functions
-              foldl (\ acc' arg -> case arg of
-                                    RecordConstrType t (L (_,s)) -> insertDup (SN s Nothing) (SV (Function tyvars [if null tyvars then TSimple (U_ d) else TPoly (U_ d) (map (TSimple . U_) tyvars)] t) sureExported) acc'
-                                    _ -> acc') (f' d tyvars (SinglConstrIdent i) acc) args
+            f' d@(U (_,dname)) tyvars (ParamConstrIdent i@(U (_,cname)) args) acc = 
+              -- this fold is for maybe adding any record field as a function
+              foldr (\case
+                        RecordConstrType t (L (_,s)) -> 
+                              insertDup (SN s Nothing) (SV (Function tyvars [if null tyvars then TSimple (U_ d) else TPoly (U_ d) (map (TSimple . U_) tyvars)] t) sureExported)
+                        _ -> id
+                    )
+                    -- this actually adds the constructor to the symboltable
+                    (insertDup (SN cname Nothing) (SV (Datacons dname tyvars 
+                        (map (\case RecordConstrType t _ -> t
+                                    EmptyConstrType t -> t)  args) 
+                        (if null tyvars then TSimple (U_ d) else TPoly (U_ d) (map (TSimple . U_) tyvars))) sureExported) acc)
+                    args
 
             -- this is needed because, "export *;" will export *ONLY* the locally-defined symbols
             -- later, the "exports" Haskell function will check also for individual (non-star) exports

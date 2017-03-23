@@ -42,6 +42,7 @@ instantiateOne :: M.Map String ABS.T -> ABS.T -> ABS.T
 instantiateOne bs tyvar@(ABS.TSimple (ABS.U_ (ABS.U (_,s)))) = case M.lookup s bs of
                                                                 Nothing -> tyvar
                                                                 Just t' -> t'
+instantiateOne bs (ABS.TPoly qu ts) = ABS.TPoly qu $ map (instantiateOne bs) ts 
 instantiateOne _ t = t
 
 instantiateMany :: M.Map String ABS.T -> [ABS.T] -> [ABS.T]
@@ -54,7 +55,7 @@ instantiateMany bs = foldr (\ v acc -> instantiateOne bs v : acc) []
 
 
 
-unifyMany tyvars args1 args2 = foldl (flip ($)) M.empty $ zipWith (unify tyvars) args1 args2
+unifyMany tyvars args1 args2 = foldl (flip ($)) (M.fromList $ map (\ (ABS.U (_,tyvarName)) -> (tyvarName,ABS.TInfer)) tyvars) $ zipWith (unify tyvars) args1 args2
   where
     unify :: (?st :: SymbolTable)
           => [ABS.U] 
@@ -80,7 +81,7 @@ unifyMany tyvars args1 args2 = foldl (flip ($)) M.empty $ zipWith (unify tyvars)
     mostGeneral x@(ABS.TSimple (ABS.U_ (ABS.U (_,"Rat")))) (ABS.TSimple (ABS.U_ (ABS.U (_,"Int")))) = x
     mostGeneral ty1@(ABS.TSimple (ABS.U_ (ABS.U (_,s1)))) ty2@(ABS.TSimple (ABS.U_ (ABS.U (_,s2)))) = 
       case (M.lookup (SN s1 Nothing) ?st, M.lookup (SN s2 Nothing) ?st)  of
-          (Just (SV (Interface _ es1) _), Just (SV (Interface _ es2) _)) -> if (SN s2 Nothing) `elem` M.keys es1
+          (Just (SV (Interface _ es1) _), Just (SV (Interface _ es2) _)) -> if (SN s2 Nothing) `elem` (SN s1 Nothing):M.keys es1 -- also checks for type equality
                                                                             then ty2
                                                                             else if (SN s1 Nothing) `elem` M.keys es2
                                                                                  then ty1
@@ -109,6 +110,8 @@ buildInfo t@(ABS.TSimple _) = if isInterface t
   where
     isInterface :: (?st::SymbolTable) => ABS.T -> Bool
     isInterface ABS.TInfer = False
+    isInterface (ABS.TSimple (ABS.U_ (ABS.U (_,"Rat")))) = True
+    isInterface (ABS.TSimple (ABS.U_ (ABS.U (_,"Int")))) = True
     isInterface t = let
                   qtyp = case t of
                            ABS.TSimple qtyp' -> qtyp'
