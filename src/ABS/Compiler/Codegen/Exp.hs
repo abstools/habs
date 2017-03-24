@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, QuasiQuotes #-}
+{-# LANGUAGE ImplicitParams, QuasiQuotes, LambdaCase #-}
 module ABS.Compiler.Codegen.Exp
     ( tFunBody
     , tPureExp
@@ -12,18 +12,21 @@ import ABS.Compiler.Firstpass.Base
 import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
-import qualified Data.Map as M (fromList, insert, lookup, union, assocs)
+import qualified Data.Map as M (fromList, insert, lookup, union, assocs, lookup, findWithDefault)
 import Language.Haskell.Exts.QQ (hs, ty)
 import Data.Foldable (foldlM)
 import Data.List (find)
 
 -- | Translating the body of a pure function
 tFunBody :: (?st::SymbolTable, ?tyvars::[ABS.U], ?fields::ScopeLVL, ?cname::String)
-         => ABS.FunBody -> [ABS.FormalPar] -> HS.Exp
-tFunBody ABS.BuiltinFunBody _params = [hs|I'.error "builtin called"|] -- builtin becomes error
-tFunBody (ABS.NormalFunBody pexp) params = fst $ runReader (tPureExp pexp) 
-                                           (M.fromList $ map (\ (ABS.FormalPar t i) -> (i,t)) params) -- initial function scope is the formal params
-
+         => ABS.FunBody -> [ABS.U] -> [ABS.FormalPar] -> ABS.T -> HS.Exp
+tFunBody ABS.BuiltinFunBody _ _params _ = [hs|I'.error "builtin called"|] -- builtin becomes error
+tFunBody (ABS.NormalFunBody pexp) tyvars params declaredRes = 
+   let (e,t) = runReader (tPureExp pexp) (M.fromList $ map (\ (ABS.FormalPar t i) -> (i,t)) params) -- initial function scope is the formal params
+       bs = unifyMany tyvars [declaredRes] [t]
+       instantRes = instantiateOne bs declaredRes
+   in mUpOne instantRes t e
+ 
 -- | Translating a pure expression
 tPureExp :: ( ?st::SymbolTable, ?tyvars::[ABS.U], ?fields::ScopeLVL, ?cname::String) 
          => ABS.PureExp -> LetScope (HS.Exp, ABS.T)
@@ -41,24 +44,25 @@ tPureExp (ABS.EIf predE thenE elseE) = do
   pure ([hs|if $ep then $ue1 else $ue2|], instantRes)
 
 tPureExp (ABS.ELet (ABS.FormalPar ptyp pid@(ABS.L (_,var))) eqE inE) = do
-  (tin,_) <- local (M.insert pid ptyp) $ tPureExp inE -- adds to scope
-  (teq,_) <- tPureExp eqE
+  (ein,tin) <- local (M.insert pid ptyp) $ tPureExp inE -- adds to scope
+  (eeq,teq) <- tPureExp eqE
   let pat = HS.Ident var
-  pure (case ptyp of
-             ABS.TInfer -> [hs|(\ ((pat)) -> $tin) $teq|] -- don't add type-sig, infer it
-             _ -> let typ = tTypeOrTyVar ?tyvars ptyp
-                 in [hs|(\ ((pat)) -> $tin) ( $teq :: ((typ)) )|]  -- maps to a haskell lambda exp
-         ,ptyp)
+  pure ([hs|(\ ((pat)) -> $ein) ( $(mUpOne ptyp teq eeq) )|]  -- maps to a haskell lambda exp
+       ,tin)
 
 tPureExp (ABS.ECase ofE branches) = do
   (tof,_) <- tPureExp ofE
-  texp <- HS.Case tof <$>
-    mapM (\ (ABS.ECaseBranch pat pexp) -> do
-            (texp,_) <- tPureExp pexp
-            (tpat,tguards) <- tPattern pat
-            pure $ HS.Alt noLoc' tpat ((if null tguards then HS.UnGuardedRhs else (HS.GuardedRhss . pure . HS.GuardedRhs noLoc' tguards)) texp) Nothing
-         ) branches
-  pure (texp, undefined)
+  (es,ts) <- unzip <$> mapM (\case (ABS.ECaseBranch _ pexp) -> tPureExp pexp) branches
+  let freshTyVar = ABS.U ((0,0),"A'")
+      declaredRes = replicate (length branches) (ABS.TSimple (ABS.U_ freshTyVar))
+      bs = unifyMany [freshTyVar] declaredRes ts
+      instantRes = instantiateMany bs declaredRes
+      es' = mUpMany instantRes ts es
+  tbranches <- mapM (\ (ABS.ECaseBranch pat _, texp') -> do
+                      (tpat,tguards) <- tPattern pat
+                      pure $ HS.Alt noLoc' tpat ((if null tguards then HS.UnGuardedRhs else (HS.GuardedRhss . pure . HS.GuardedRhs noLoc' tguards)) texp') Nothing
+                    ) (zip branches es')
+  pure (HS.Case tof tbranches, M.findWithDefault ABS.TInfer "A'" bs)
 
 tPureExp (ABS.EFunCall ql args) = do
   (es,ts) <- unzip <$> mapM tPureExp args

@@ -112,7 +112,7 @@ tDecl (ABS.DFunPoly fReturnTyp (ABS.L (fpos,fid)) tyvars params body) = [
                                          (let ?tyvars = tyvars
                                               ?cname = ""
                                               ?fields = M.empty
-                                          in tFunBody body params)
+                                          in tFunBody body tyvars params fReturnTyp)
                                    )  Nothing ] ]
 
 
