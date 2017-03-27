@@ -318,8 +318,8 @@ tPureExp (ABS.ELit lit) = pure $ case lit of
                                    --(HS.ExpTypeSig noLoc' (HS.Lit $ HS.Int i) [ty|Int|], ABS.TSimple $ ABS.U_ $ ABS.U $ ((0,0),"Int"))
                                    ABS.LThis -> if null ?cname
                                                 then error "cannot access this keyword inside main block or pure code"
-                                                else ([hs|this|],ABS.TInfer)
+                                                else ([hs|(up' this)|],ABS.TInfer)
                                                   -- case find (\ (SN ident' modul,_) -> ?cname == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
                                                   --     Just (_,SV (Class is) _) -> ([hs|(up' this)|], is) -- Class has a polymorphic type of all directly-implemented interfaces
                                                       -- _ -> error "dev error: cannot find such class"
-                                   ABS.LNull -> ([hs|null|], ABS.TInfer)
+                                   ABS.LNull -> ([hs|(up' null)|], ABS.TInfer)

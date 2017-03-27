@@ -97,22 +97,29 @@ unifyMany tyvars args1 args2 = foldl (flip ($)) (M.fromList $ map (\ (ABS.U (_,t
 data Info = Up
           | Deep String Int [(Int,Info)]
 
-buildInfo :: (?st :: SymbolTable) => ABS.T -> Maybe Info
-buildInfo ABS.TInfer = Nothing
-buildInfo (ABS.TPoly (ABS.U_ (ABS.U (_,"Fut"))) _) = Nothing -- TODO: Fut<A> should be covariant, but for implementation reasons (MVar a) it is invariant
-buildInfo (ABS.TPoly qu ts) = let (l, buildArgs) = foldl (\ (i,acc) t -> maybe (i+1,acc) (\x -> (i+1,(i,x):acc)) (buildInfo t) ) (0,[]) ts
+buildInfo :: (?st :: SymbolTable) => ABS.T -> ABS.T -> Maybe Info
+buildInfo _ ABS.TInfer = Nothing
+buildInfo (ABS.TSimple (ABS.U_ u1)) t@(ABS.TSimple (ABS.U_ u2)) 
+  | u1 == u2 = Nothing
+  | otherwise = if isInterface t
+                then Just Up
+                else Nothing
+buildInfo _ t@(ABS.TSimple _) = if isInterface t
+                                then Just Up
+                                else Nothing
+
+buildInfo _ (ABS.TPoly (ABS.U_ (ABS.U (_,"Fut"))) _) = Nothing -- TODO: Fut<A> should be covariant, but for implementation reasons (MVar a) it is invariant
+buildInfo (ABS.TPoly _ ts1) (ABS.TPoly qu ts2) = let (l, buildArgs) = foldl (\ (i,acc) (t1,t2) -> maybe (i+1,acc) (\x -> (i+1,(i,x):acc)) (buildInfo t1 t2) ) (0,[]) (zip ts1 ts2)
                               in if null buildArgs
                                  then Nothing
                                  else Just $ Deep (showQU qu) l buildArgs
-buildInfo t@(ABS.TSimple _) = if isInterface t
-                              then Just Up
-                              else Nothing
-  where
-    isInterface :: (?st::SymbolTable) => ABS.T -> Bool
-    isInterface ABS.TInfer = False
-    isInterface (ABS.TSimple (ABS.U_ (ABS.U (_,"Rat")))) = True
-    isInterface (ABS.TSimple (ABS.U_ (ABS.U (_,"Int")))) = True
-    isInterface t = let
+
+
+isInterface :: (?st::SymbolTable) => ABS.T -> Bool
+isInterface ABS.TInfer = False
+isInterface (ABS.TSimple (ABS.U_ (ABS.U (_,"Rat")))) = True
+isInterface (ABS.TSimple (ABS.U_ (ABS.U (_,"Int")))) = True
+isInterface t = let
                   qtyp = case t of
                            ABS.TSimple qtyp' -> qtyp'
                            ABS.TPoly qtyp' _ -> qtyp'
@@ -136,7 +143,7 @@ buildUp (Deep functorName functorWidth deeps) = foldl
 
 
 mUpOne :: (?st :: SymbolTable) => ABS.T -> ABS.T -> HS.Exp -> HS.Exp
-mUpOne unified actual exp = maybe exp (\ info -> HS.ExpTypeSig noLoc'(HS.App (buildUp info) exp) (tType unified)) (buildInfo unified)
+mUpOne unified actual exp = maybe exp (\ info -> HS.ExpTypeSig noLoc'(HS.App (buildUp info) exp) (tType unified)) (buildInfo unified actual)
 
 mUpMany :: (?st :: SymbolTable) => [ABS.T] -> [ABS.T] -> [HS.Exp] -> [HS.Exp]
 mUpMany = zipWith3 mUpOne
