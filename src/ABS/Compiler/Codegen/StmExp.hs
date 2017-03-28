@@ -68,8 +68,9 @@ tStmExp (ABS.ECase ofE branches) = do
 tStmExp (ABS.EFunCall (ABS.QL _ _) _args) = todo
 
 tStmExp (ABS.EFunCall (ABS.L_ (ABS.L (_,cid))) args) =  
-  case find (\ (SN ident' modul,_) -> cid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
-    Just (_,SV Foreign _) -> if null args
+  -- case find (\ (SN ident' modul,_) -> cid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
+  case M.lookup (SN cid Nothing) ?st of
+    Just (SV Foreign _) -> if null args
                              then pure ([hs|$(HS.Var $ HS.UnQual $ HS.Ident cid)|], ABS.TInfer)
                              else do 
                               nested <- foldlM
@@ -77,14 +78,14 @@ tStmExp (ABS.EFunCall (ABS.L_ (ABS.L (_,cid))) args) =
                                [hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident cid)|]
                                args
                               pure ([hs|(I'.join ($nested))|], ABS.TInfer)
-    Just (_,(SV (Function tyvars declaredArgs declaredRes) _)) -> do
+    Just (SV (Function tyvars declaredArgs declaredRes) _) -> do
       (es,ts) <- unzip <$> mapM tStmExp args
       let bs = unifyMany tyvars declaredArgs ts
           instantArgs = instantiateMany bs declaredArgs
           instantRes = instantiateOne bs declaredRes
           es' = mUpMany instantArgs ts es
       pure (HS.Paren $ foldl (\acc arg -> [hs|$acc <*> $arg|])
-                          (HS.Var $ HS.UnQual $ HS.Ident cid)
+                          [hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident cid)|]
                           es', instantRes)
     _ -> error $ "cannot find function " ++ cid
 
@@ -278,7 +279,7 @@ tStmExp (ABS.EParamConstr qu args) = do
           instantRes = instantiateOne bs declaredRes
           es' = mUpMany instantArgs ts es
       pure (HS.Paren $ foldl (\ acc arg -> [hs|$acc <*> $arg|])
-                             (HS.Var $ HS.UnQual $ HS.Ident constrName)
+                             [hs| I'.pure $(HS.Var $ HS.UnQual $ HS.Ident constrName)|]
                              es', instantRes)          
     _ -> error $ "cannot find constructor " ++ constrName
 
@@ -327,7 +328,7 @@ tStmExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LNull -> ([hs|I'.pure (up' null)|], ABS.TInfer)
 
 mUpOne :: (?st :: SymbolTable) => ABS.T -> ABS.T -> HS.Exp -> HS.Exp
-mUpOne unified actual exp = maybe exp (\ info -> HS.ExpTypeSig noLoc' [hs|( $(buildUp info) <$!> exp )|] (HS.TyApp (HS.TyWildCard Nothing) (tType unified))) (buildInfo unified actual)
+mUpOne unified actual exp = maybe exp (\ info -> HS.ExpTypeSig noLoc' [hs|( $(buildUp info) <$!> $exp )|] (HS.TyApp (HS.TyWildCard Nothing) (tType unified))) (buildInfo unified actual)
 
 mUpMany :: (?st :: SymbolTable) => [ABS.T] -> [ABS.T] -> [HS.Exp] -> [HS.Exp]
 mUpMany = zipWith3 mUpOne
