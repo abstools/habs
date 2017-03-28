@@ -74,7 +74,7 @@ tPureExp (ABS.EFunCall ql args) = do
           instantRes = instantiateOne bs declaredRes
           es' = mUpMany instantArgs ts es
       pure (HS.Paren $ foldl HS.App
-                          (HS.Var $ HS.UnQual $ HS.Ident $ showQL ql)
+                          (HS.Var $ HS.UnQual $ HS.Ident funName)
                           es', instantRes)          
     _ -> error $ "cannot find function " ++ funName
 
@@ -88,7 +88,7 @@ tPureExp (ABS.ENaryFunCall ql args) = do
           instantRes = instantiateOne bs declaredRes
           es' = mUpMany instantArgs ts es
       pure (HS.Paren $ HS.App
-                        (HS.Var $ HS.UnQual $ HS.Ident $ showQL ql)
+                        (HS.Var $ HS.UnQual $ HS.Ident funName)
                         (HS.List es')
            , instantRes)          
     _ -> error $ "cannot find function " ++ funName
@@ -273,7 +273,7 @@ tPureExp (ABS.EParamConstr qu args) = do
           instantRes = instantiateOne bs declaredRes
           es' = mUpMany instantArgs ts es
       pure (HS.Paren $ foldl HS.App
-                          (HS.Var $ HS.UnQual $ HS.Ident $ showQU qu)
+                          (HS.Var $ HS.UnQual $ HS.Ident constrName)
                           es', instantRes)          
     _ -> error $ "cannot find constructor " ++ constrName
 
@@ -323,3 +323,9 @@ tPureExp (ABS.ELit lit) = pure $ case lit of
                                                   --     Just (_,SV (Class is) _) -> ([hs|(up' this)|], is) -- Class has a polymorphic type of all directly-implemented interfaces
                                                       -- _ -> error "dev error: cannot find such class"
                                    ABS.LNull -> ([hs|(up' null)|], ABS.TInfer)
+
+mUpOne :: (?st :: SymbolTable) => ABS.T -> ABS.T -> HS.Exp -> HS.Exp
+mUpOne unified actual exp = maybe exp (\ info -> HS.ExpTypeSig noLoc'(HS.App (buildUp info) exp) (tType unified)) (buildInfo unified actual)
+
+mUpMany :: (?st :: SymbolTable) => [ABS.T] -> [ABS.T] -> [HS.Exp] -> [HS.Exp]
+mUpMany = zipWith3 mUpOne

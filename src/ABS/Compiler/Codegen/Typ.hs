@@ -2,8 +2,8 @@
 module ABS.Compiler.Codegen.Typ
     ( tTypeOrTyVar
     , tType
-    , unifyMany, instantiateMany, mUpMany, instantiateOne
-    , mUpOne
+    , unifyMany, instantiateMany, instantiateOne
+    , buildInfo, buildUp
     ) where
 
 import ABS.Compiler.Utils
@@ -142,11 +142,6 @@ buildUp (Deep functorName functorWidth deeps) = foldl
                                               [0..functorWidth-1]
 
 
-mUpOne :: (?st :: SymbolTable) => ABS.T -> ABS.T -> HS.Exp -> HS.Exp
-mUpOne unified actual exp = maybe exp (\ info -> HS.ExpTypeSig noLoc'(HS.App (buildUp info) exp) (tType unified)) (buildInfo unified actual)
-
-mUpMany :: (?st :: SymbolTable) => [ABS.T] -> [ABS.T] -> [HS.Exp] -> [HS.Exp]
-mUpMany = zipWith3 mUpOne
 
 -- (\ unified actual exp -> -- todo: optimize if unified == actual, don't up
 --                         maybe exp (\ info -> HS.ExpTypeSig noLoc'(HS.App (buildUp info) exp) (tType unified)) (buildInfo unified))
