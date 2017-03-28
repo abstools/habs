@@ -18,7 +18,7 @@ import Data.Foldable (foldlM)
 import Data.List (find)
 
 -- | Translating the body of a pure function
-tFunBody :: (?st::SymbolTable, ?tyvars::[ABS.U], ?fields::ScopeLVL, ?cname::String)
+tFunBody :: (?st::SymbolTable, ?fields::ScopeLVL, ?cname::String)
          => ABS.FunBody -> [ABS.U] -> [ABS.FormalPar] -> ABS.T -> HS.Exp
 tFunBody ABS.BuiltinFunBody _ _params _ = [hs|I'.error "builtin called"|] -- builtin becomes error
 tFunBody (ABS.NormalFunBody pexp) tyvars params declaredRes = 
@@ -28,7 +28,7 @@ tFunBody (ABS.NormalFunBody pexp) tyvars params declaredRes =
    in mUpOne instantRes t e
  
 -- | Translating a pure expression
-tPureExp :: ( ?st::SymbolTable, ?tyvars::[ABS.U], ?fields::ScopeLVL, ?cname::String) 
+tPureExp :: ( ?st::SymbolTable, ?fields::ScopeLVL, ?cname::String) 
          => ABS.PureExp -> LetScope (HS.Exp, ABS.T)
 
 tPureExp (ABS.EIf predE thenE elseE) = do

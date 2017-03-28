@@ -109,8 +109,7 @@ tDecl (ABS.DFunPoly fReturnTyp (ABS.L (fpos,fid)) tyvars params body) = [
           (tTypeOrTyVar tyvars fReturnTyp) params)
       , HS.FunBind [HS.Match (mkLoc fpos) (HS.Ident fid) (map (\(ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar $ HS.Ident pid) params)
                           Nothing (HS.UnGuardedRhs $
-                                         (let ?tyvars = tyvars
-                                              ?cname = ""
+                                         (let ?cname = ""
                                               ?fields = M.empty
                                           in tFunBody body tyvars params fReturnTyp)
                                    )  Nothing ] ]
