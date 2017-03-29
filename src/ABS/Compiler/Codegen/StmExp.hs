@@ -4,6 +4,7 @@
 -- the resulting haskell expressions have type IO, which means that eventually later have to be lifted to ABS monad
 module ABS.Compiler.Codegen.StmExp
     ( tStmExp
+    , mUpOne
     ) where
 
 import ABS.Compiler.Codegen.Base

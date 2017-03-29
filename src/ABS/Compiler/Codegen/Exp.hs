@@ -2,6 +2,7 @@
 module ABS.Compiler.Codegen.Exp
     ( tFunBody
     , tPureExp
+    , mUpOne
     )where
 
 import ABS.Compiler.Codegen.Base
@@ -275,6 +276,16 @@ tPureExp (ABS.EParamConstr qu args) = do
       pure (HS.Paren $ foldl HS.App
                           (HS.Var $ HS.UnQual $ HS.Ident constrName)
                           es', instantRes)          
+    -- this is needed because `transformFieldBody` translates the smart class constructor to a Param class
+    Just (SV (Class _ declaredClassArgs) _) -> 
+      -- let 
+      --     -- only up the class args, the "local" field args will be up'ed by Let
+      --     (ces,les) = splitAt (length declaredClassArgs) es
+      --     cts = take (length declaredClassArgs) ts
+      --     ces' = mUpMany declaredClassArgs cts ces
+      pure (HS.Paren $ foldl HS.App
+                          (HS.Var $ HS.UnQual $ HS.Ident constrName)
+                          es, ABS.TInfer)
     _ -> error $ "cannot find constructor " ++ constrName
 
   -- texp <- maybeUpException . HS.Paren <$>

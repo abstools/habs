@@ -26,7 +26,7 @@ data SymbolType = Function [U] [T] T -- ^ tyvars, input types, output type
                 | Datatype
                 | Datacons String [U] [T] T -- ^ from which datatype it comes (required by Haskell module system),  tyvars, input types, output type
                 | Exception
-                | Class [T]
+                | Class [T] [T] -- the interfaces it directly implements, and the class args
                 | Interface [(String,Maybe [String])] (Map SymbolName [(String,Maybe [String])]) -- ^ its direct method names, http-callable formal parameters & map of *all* extends interfaces to their own methods, http-callable formal parameters
                 | Foreign
                   deriving Show

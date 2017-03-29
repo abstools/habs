@@ -217,7 +217,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
              Exception -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden,
                           HS.EVar $ HS.UnQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- myException' smart constructor
                          ]
-             Class _ -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden
+             Class _ _ -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden
                       ,HS.EVar $ HS.UnQual $ HS.Ident $ "smart'" ++ showQA iden -- class smart constructor
                       ,HS.EVar $ HS.UnQual $ HS.Ident $ "init'" ++ showQA iden -- class init block 
                       ]
@@ -245,7 +245,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
              Exception -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden,
                           HS.EVar $ maybeQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- myException' smart constructor
                          ]
-             Class _ -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden,
+             Class _ _ -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden,
                           HS.EVar $ maybeQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- class smart constructor
                          ]
              -- function, datatype, type synonym, foreign
@@ -290,7 +290,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                Exception -> [HS.IThingAll $ HS.Ident iden,
                               HS.IVar $ HS.Ident $ headToLower iden ++ "'" -- myException' smart constructor
                            ]
-               Class _ -> [HS.IThingAll $ HS.Ident iden,
+               Class _ _ -> [HS.IThingAll $ HS.Ident iden,
                           HS.IVar $ HS.Ident $ headToLower iden ++ "'" -- class smart constructor
                        ]
                Foreign -> [if isUpper $ head iden 
@@ -342,7 +342,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
           scottyAction = if null callableMethods
                          then [hs|I'.pure ()|]
                          else HS.Do $ map makeCallable callableMethods
-      in [[dec|main = main_is' (\ this -> $(tMethod block [] M.empty "" [] False)) ($scottyAction)|]] 
+      in [[dec|main = main_is' (\ this -> $(tMethod block [] M.empty "" [] False ABS.TInfer)) ($scottyAction)|]] 
          -- no params, no fields, empty class-name, no alone-methods
 
 

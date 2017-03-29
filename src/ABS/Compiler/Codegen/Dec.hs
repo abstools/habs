@@ -154,10 +154,10 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
                                   then runCall
                                   else [hs|I'.pure ()|]
                     ABS.JustBlock block -> if "run" `M.member` aloneMethods
-                                            then case tMethod block [] fields clsName (M.keys aloneMethods) True of
+                                            then case tMethod block [] fields clsName (M.keys aloneMethods) True ABS.TInfer of
                                                    HS.Do stms -> HS.Do $ stms ++ [HS.Qualifier runCall]  -- append run statement
                                                    _ -> runCall -- runcall the only rhs
-                                            else tMethod block [] fields clsName (M.keys aloneMethods) True
+                                            else tMethod block [] fields clsName (M.keys aloneMethods) True ABS.TInfer
                ) Nothing] ]
     
 
@@ -173,24 +173,24 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
     HS.InstDecl noLoc' Nothing [] [] 
           (HS.UnQual $ HS.Ident $ showQU qtyp ++ "'") -- the interface name
           [HS.TyCon $ HS.UnQual $ HS.Ident $ clsName] -- the class name
-          (fmap (\ mname -> let Just (ABS.MethClassBody _typ _ mparams block) = M.lookup mname classMethods
+          (fmap (\ mname -> let Just (ABS.MethClassBody retTyp _ mparams block) = M.lookup mname classMethods
                            in HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident mname)
                                                        -- method params
                                                        (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _)|]])
                                                        Nothing 
-                                                       (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
+                                                       (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False retTyp) Nothing])
                 ) (map fst directMethods))
     -- the indirect instances
     : M.foldlWithKey (\ acc (SN n _) indirectMethods ->
                           HS.InstDecl noLoc' Nothing [] [] 
                                 (HS.UnQual $ HS.Ident $ n ++ "'") -- the interface name
                                 [HS.TyCon $ HS.UnQual $ HS.Ident $ clsName] -- the class name
-                                (fmap (\ mname -> let Just (ABS.MethClassBody _typ _ mparams block) = M.lookup mname classMethods
+                                (fmap (\ mname -> let Just (ABS.MethClassBody retTyp _ mparams block) = M.lookup mname classMethods
                                                  in HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident mname) 
                                                                              -- method params
                                                                              (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _)|]])
                                                                              Nothing 
-                                                                             (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
+                                                                             (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False retTyp) Nothing])
                                       ) (map fst indirectMethods)) : acc
                      ) [] extends
             ) impls
@@ -207,7 +207,7 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
                          -- method params
                          (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _)|]])
                          Nothing 
-                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing]] )
+                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False retTyp) Nothing]] )
           (M.assocs aloneMethods)
 
   where

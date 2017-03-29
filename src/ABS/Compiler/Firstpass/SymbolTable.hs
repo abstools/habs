@@ -127,8 +127,8 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                                                 M.empty) -- no super interfaces
                                                             sureExported)
 
-            f (DClassParImplements (U (_, s)) _ interfs _ _ _) = insertDup (SN s Nothing) 
-                                                            (SV (Class (map TSimple interfs)) sureExported)
+            f (DClassParImplements (U (_, s)) formalPars interfs _ _ _) = insertDup (SN s Nothing) 
+                                                            (SV (Class (map TSimple interfs) (map (\ (FormalPar t _) -> t) formalPars)) sureExported)
 
             f (DException (SinglConstrIdent (U (_, s)))) = insertDup (SN s Nothing) 
                                                                     (SV Exception sureExported)
