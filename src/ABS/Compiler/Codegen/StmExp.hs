@@ -302,12 +302,12 @@ tStmExp (ABS.EParamConstr qu args) = do
 tStmExp (ABS.EVar var@(ABS.L (p,pid))) = do
      scope <- ask
      pure $ case M.lookup var scope of
-              Just t -> (HS.Var $ HS.UnQual $ HS.Ident pid, t)
+              Just t -> ([hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident pid)|], t)
               Nothing -> case M.lookup var ?vars of
                           Just t -> ([hs|I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident pid)|], t)
                           Nothing -> case M.lookup var ?fields of
                                     Just t -> let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname -- accessor
-                                             in ([hs|($fieldFun this'')|], t)
+                                              in ([hs|I'.pure ($fieldFun this'')|], t)
                                     Nothing-> case find (\ (SN ident' modul,_) -> pid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
                                                Just (_,SV Foreign _) -> (HS.Var $ HS.UnQual $ HS.Ident pid, ABS.TInfer)
                                                _ ->  ([hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident pid)|], ABS.TInfer) -- errorPos p $ pid ++ " not in scope" --  -- 
@@ -317,7 +317,7 @@ tStmExp (ABS.EField var@(ABS.L (p, field))) = if null ?cname
                                                   then error "cannot access fields inside main block"
                                                   else case M.lookup var ?fields of
                                                          Just t -> let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname
-                                                                  in pure ([hs|($fieldFun this'')|], t)
+                                                                  in pure ([hs|I'.pure ($fieldFun this'')|], t)
                                                          Nothing -> errorPos p "no such field"
 
 tStmExp (ABS.ELit lit) = pure $ case lit of
