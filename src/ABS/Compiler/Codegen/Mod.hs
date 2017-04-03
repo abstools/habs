@@ -214,12 +214,12 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
              -- in ABS the dataconstructor can be exported without its datatype!
              -- this is wrong, then you cannot do anything with that data-value
              -- in HS we *must* export its datatype also
-             Datacons dname -> [HS.EThingWith (HS.UnQual $ HS.Ident dname)
+             Datacons dname _ _ _ -> [HS.EThingWith (HS.UnQual $ HS.Ident dname)
                                [HS.ConName $ HS.Ident $ showQA iden]]
              Exception -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden,
                           HS.EVar $ HS.UnQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- myException' smart constructor
                          ]
-             Class -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden
+             Class _ _ -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden
                       ,HS.EVar $ HS.UnQual $ HS.Ident $ "smart'" ++ showQA iden -- class smart constructor
                       ,HS.EVar $ HS.UnQual $ HS.Ident $ "init'" ++ showQA iden -- class init block 
                       ]
@@ -242,12 +242,12 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
              -- in ABS the dataconstructor can be exported without its datatype!
              -- this is wrong, then you cannot do anything with that data-value
              -- in HS we *must* export its datatype also
-             Datacons dname -> [HS.EThingWith (maybeQual $ HS.Ident dname)
+             Datacons dname _ _ _ -> [HS.EThingWith (maybeQual $ HS.Ident dname)
                                [HS.ConName $ HS.Ident $ showQA iden]]
              Exception -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden,
                           HS.EVar $ maybeQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- myException' smart constructor
                          ]
-             Class -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden,
+             Class _ _ -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden,
                           HS.EVar $ maybeQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- class smart constructor
                          ]
              -- function, datatype, type synonym, foreign
@@ -287,12 +287,12 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
           in case symbolValue of
                -- same applies as exportedxport rules
                Interface _ _ -> [HS.IThingAll $ HS.Ident iden]
-               Datacons dname -> [HS.IThingWith (HS.Ident dname)
+               Datacons dname _ _ _ -> [HS.IThingWith (HS.Ident dname)
                                        [HS.ConName $ HS.Ident iden]]
                Exception -> [HS.IThingAll $ HS.Ident iden,
                               HS.IVar $ HS.Ident $ headToLower iden ++ "'" -- myException' smart constructor
                            ]
-               Class -> [HS.IThingAll $ HS.Ident iden,
+               Class _ _ -> [HS.IThingAll $ HS.Ident iden,
                           HS.IVar $ HS.Ident $ headToLower iden ++ "'" -- class smart constructor
                        ]
                Foreign -> [if isUpper $ head iden 
@@ -344,6 +344,6 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
           scottyAction = if null callableMethods
                          then [hs|I'.pure ()|]
                          else HS.Do $ map makeCallable callableMethods
-      in [[dec|main = main_is' (\ this@(Obj' _ _ thisDC) -> $(tMethod block [] M.empty "" [] False)) ($scottyAction)|]] 
+      in [[dec|main = main_is' (\ this@(Obj' _ _ thisDC) -> $(tMethod block [] M.empty "" [] False ABS.TInfer)) ($scottyAction)|]] 
          -- no params, no fields, empty class-name, no alone-methods
 

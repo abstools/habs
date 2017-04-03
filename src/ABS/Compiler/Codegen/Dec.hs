@@ -109,10 +109,9 @@ tDecl (ABS.DFunPoly fReturnTyp (ABS.L (fpos,fid)) tyvars params body) = [
           (tTypeOrTyVar tyvars fReturnTyp) params)
       , HS.FunBind [HS.Match (mkLoc fpos) (HS.Ident fid) (map (\(ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar $ HS.Ident pid) params)
                           Nothing (HS.UnGuardedRhs $
-                                         (let ?tyvars = tyvars
-                                              ?cname = ""
+                                         (let ?cname = ""
                                               ?fields = M.empty
-                                          in tFunBody body params)
+                                          in tFunBody body tyvars params fReturnTyp)
                                    )  Nothing ] ]
 
 
@@ -137,10 +136,9 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
     -- the class params serve as input-args to the smart constructor
     (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident $ pid ++ "'this")) cparams) Nothing 
     -- rhs
-    (HS.UnGuardedRhs $ runReader (let ?tyvars = []
-                                      ?cname = ""  -- it is transformed to pure code, so no need for clsName
-                                      ?fields = fields
-                                  in tPureExp $ transformFieldBody ldecls) M.empty) Nothing]
+    (HS.UnGuardedRhs $ fst $ runReader (let ?cname = ""  -- it is transformed to pure code, so no need for clsName
+                                            ?fields = fields
+                                        in tPureExp $ transformFieldBody ldecls) M.empty) Nothing]
   ]
   ++ -- The init'Class function
   [ HS.TypeSig noLoc' [HS.Ident $ "init'" ++ clsName] (HS.TyApp 
@@ -156,10 +154,10 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
                                   then runCall
                                   else [hs|I'.pure ()|]
                     ABS.JustBlock block -> if "run" `M.member` aloneMethods
-                                            then case tMethod block [] fields clsName (M.keys aloneMethods) True of
+                                            then case tMethod block [] fields clsName (M.keys aloneMethods) True ABS.TInfer of
                                                    HS.Do stms -> HS.Do $ stms ++ [HS.Qualifier runCall]  -- append run statement
                                                    _ -> runCall -- runcall the only rhs
-                                            else tMethod block [] fields clsName (M.keys aloneMethods) True
+                                            else tMethod block [] fields clsName (M.keys aloneMethods) True ABS.TInfer
                ) Nothing] ]
     
 
@@ -175,24 +173,24 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
     HS.InstDecl noLoc' Nothing [] [] 
           (HS.UnQual $ HS.Ident $ showQU qtyp ++ "'") -- the interface name
           [HS.TyCon $ HS.UnQual $ HS.Ident $ clsName] -- the class name
-          (fmap (\ mname -> let Just (ABS.MethClassBody _typ _ mparams block) = M.lookup mname classMethods
+          (fmap (\ mname -> let Just (ABS.MethClassBody retTyp _ mparams block) = M.lookup mname classMethods
                            in HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident mname)
                                                        -- method params
                                                        (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _ thisDC)|]])
                                                        Nothing 
-                                                       (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
+                                                       (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False retTyp) Nothing])
                 ) (map fst directMethods))
     -- the indirect instances
     : M.foldlWithKey (\ acc (SN n _) indirectMethods ->
                           HS.InstDecl noLoc' Nothing [] [] 
                                 (HS.UnQual $ HS.Ident $ n ++ "'") -- the interface name
                                 [HS.TyCon $ HS.UnQual $ HS.Ident $ clsName] -- the class name
-                                (fmap (\ mname -> let Just (ABS.MethClassBody _typ _ mparams block) = M.lookup mname classMethods
+                                (fmap (\ mname -> let Just (ABS.MethClassBody retTyp _ mparams block) = M.lookup mname classMethods
                                                  in HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident mname) 
                                                                              -- method params
                                                                              (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _ thisDC)|]])
                                                                              Nothing 
-                                                                             (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing])
+                                                                             (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False retTyp) Nothing])
                                       ) (map fst indirectMethods)) : acc
                      ) [] extends
             ) impls
@@ -209,7 +207,7 @@ tDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecl
                          -- method params
                          (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _ thisDC)|]])
                          Nothing 
-                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False) Nothing]] )
+                         (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False retTyp) Nothing]] )
           (M.assocs aloneMethods)
 
   where

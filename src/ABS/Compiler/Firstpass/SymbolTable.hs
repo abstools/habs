@@ -20,7 +20,7 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                           M.insert (showQU qu) ( -- the symboltable indexed by the modulename
                                                      extends ds $ -- fetch the super interfaces only for the extended-interface symbols 
                                                      exports es $ -- adjust the exported flags of all the symbols
-                                                     localST m `unionDup` imports is -- union the local and imported symbols
+                                                     localST m `unionDup` imports is `unionDup` stdlibST -- union the local and imported symbols
                                                     ) acc) 
                M.empty -- start with an empty globalSTs
                ms      -- traverse *all* the modules
@@ -109,12 +109,12 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
             f (DType (U (_, s)) _) = insertDup (SN s Nothing) 
                                                        (SV Datatype sureExported)
 
-            f (DData (U (_, s)) cs) = insertDup (SN s Nothing) 
+            f (DDataPoly i@(U (_, s)) tyvars cs) = insertDup (SN s Nothing) 
                                                         (SV Datatype sureExported)
-                                              . (\ st -> foldl (flip (f' s)) st cs) -- add also its constructors
+                                              . (\ st -> foldl (flip (f' i tyvars)) st cs) -- add also its constructors
 
-            f (DFun _ (L (_, s)) _ _) = insertDup (SN s Nothing) 
-                                                          (SV Function sureExported)
+            f (DFunPoly ot (L (_, s)) tyvars params _) = insertDup (SN s Nothing) 
+                                                          (SV (Function tyvars (map (\ (FormalPar t _) -> t) params) ot) sureExported)
 
             f (DInterf (U (_, s)) ms') = insertDup (SN s Nothing) 
               (SV (Interface 
@@ -127,30 +127,37 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                                                 M.empty) -- no super interfaces
                                                             sureExported)
 
-            f (DClass (U (_, s)) _ _ _) = insertDup (SN s Nothing) 
-                                                            (SV Class sureExported)
+            f (DClassParImplements (U (_, s)) formalPars interfs _ _ _) = insertDup (SN s Nothing) 
+                                                            (SV (Class (map TSimple interfs) (map (\ (FormalPar t _) -> t) formalPars)) sureExported)
 
             f (DException (SinglConstrIdent (U (_, s)))) = insertDup (SN s Nothing) 
                                                                     (SV Exception sureExported)
 
             -- synonyms
-            f (DFunPoly _ i _ _ _) = f (DFun undefined i undefined undefined)
-            f (DDataPoly i _ cs) = f (DData i cs)
+            f (DFun t l params _) = f (DFunPoly t l [] params undefined)
+            f (DData i cs) = f (DDataPoly i [] cs)
             f (DTypePoly i _ _) = f (DType i undefined)
-            f (DClassPar i _ _ _ _) = f (DClass i undefined undefined undefined)
-            f (DClassImplements i _ _ _ _) = f (DClass i undefined undefined undefined)
-            f (DClassParImplements i _ _ _ _ _) = f (DClass i undefined undefined undefined)
+            f (DClass i _ _ _) = f (DClassParImplements i [] [] undefined undefined undefined)
+            f (DClassPar i ps _ _ _) = f (DClassParImplements i ps [] undefined undefined undefined)
+            f (DClassImplements i interfs _ _ _) = f (DClassParImplements i [] interfs undefined undefined undefined)
             f (DExtends i _ ms') = f (DInterf i ms') -- the super interfaces are filled later by the function extends
             f (DException (ParamConstrIdent i _)) = f (DException (SinglConstrIdent i))               
+            f' d tyvars (SinglConstrIdent u) acc = f' d tyvars (ParamConstrIdent u []) acc
 
             -- data constructors
-            f' dname (SinglConstrIdent (U (_, s))) acc = insertDup (SN s Nothing) 
-                                                              (SV (Datacons dname) sureExported) acc
-            f' dname (ParamConstrIdent i args) acc = 
-              -- add also all the accessors as functions
-              foldl (\ acc' arg -> case arg of
-                                    RecordConstrType _ (L (_,s)) -> insertDup (SN s Nothing) (SV Function sureExported) acc'
-                                    _ -> acc') (f' dname (SinglConstrIdent i) acc) args
+            f' d@(U (_,dname)) tyvars (ParamConstrIdent i@(U (_,cname)) args) acc = 
+              -- this fold is for maybe adding any record field as a function
+              foldr (\case
+                        RecordConstrType t (L (_,s)) -> 
+                              insertDup (SN s Nothing) (SV (Function tyvars [if null tyvars then TSimple (U_ d) else TPoly (U_ d) (map (TSimple . U_) tyvars)] t) sureExported)
+                        _ -> id
+                    )
+                    -- this actually adds the constructor to the symboltable
+                    (insertDup (SN cname Nothing) (SV (Datacons dname tyvars 
+                        (map (\case RecordConstrType t _ -> t
+                                    EmptyConstrType t -> t)  args) 
+                        (if null tyvars then TSimple (U_ d) else TPoly (U_ d) (map (TSimple . U_) tyvars))) sureExported) acc)
+                    args
 
             -- this is needed because, "export *;" will export *ONLY* the locally-defined symbols
             -- later, the "exports" Haskell function will check also for individual (non-star) exports
@@ -159,8 +166,31 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                 _ -> False) es
 
       -- utils
-      unionDup = M.unionWith (error "duplicate symbol")
+      unionDup = M.unionWith (\ x y -> error $ "duplicate symbol" ++ show x ++ show y)
       insertDup = M.insertWithKey (\ (SN s _) _ _ -> error ("already declared: " ++ s))
       normalize (SN i k) = SN i $ fmap (\ (n,_) -> (n, False)) k 
                                               
       
+stdlibST :: SymbolTable
+stdlibST = M.fromList $ map (\ (k,v) -> (SN k Nothing, SV v True))
+  [ ("True", Datacons "Bool" [] [] $ TSimple $ U_ $ U ((0,0),"Bool"))
+  , ("False", Datacons "Bool" [] [] $ TSimple $ U_ $ U ((0,0),"Bool"))
+  , ("Nothing", Datacons "Maybe" [U ((0,0),"A")] [] $ TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"A")])
+  , ("Just", Datacons "Maybe" [U ((0,0),"A")] [TSimple $ U_ $ U ((0,0),"A")] $ TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"A")])
+  , ("Pair", Datacons "Pair" [U ((0,0),"A"),U ((0,0),"B")] [TSimple $ U_ $ U ((0,0),"A"),TSimple $ U_ $ U ((0,0),"B")] $ TPoly (U_ $ U ((0,0),"Pair")) [TSimple $ U_  $ U ((0,0),"A"),TSimple $ U_ $ U ((0,0),"A")])
+  , ("fromJust", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"A")]] (TSimple $ U_ $ U ((0,0),"A")))
+  , ("truncate", Function [] [TSimple $ U_ $ U ((0,0),"Rat")] (TSimple $ U_ $ U ((0,0),"Int")))
+  , ("Speed", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
+  , ("Cores", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
+  , ("Bandwidth", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
+  , ("Memory", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
+  , ("CostPerInterval", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
+  --, ("DeploymentComponent", Interface (zip ["load", "total", "transfer", "decrementResources", "incrementResources", "getName", "getCreationTime"] $ repeat Nothing) M.empty)
+  , ("InfRat", Datacons "InfRat" [] [] $ TSimple $ U_ $ U ((0,0),"InfRat"))
+  , ("Fin", Datacons "InfRat" [] [TSimple $ U_ $ U ((0,0),"Rat")] $ TSimple $ U_ $ U ((0,0),"InfRat"))
+  , ("list", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]] (TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]) )
+  , ("minimum", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]] (TSimple $ U_ $ U ((0,0),"A")))
+  , ("maximum", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]] (TSimple $ U_ $ U ((0,0),"A")))
+  , ("isJust", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"A")]] (TSimple $ U_ $ U ((0,0),"Bool")))
+  , ("toString", Function [U ((0,0),"A")] [TSimple $ U_ $ U ((0,0),"A")] (TSimple $ U_ $ U ((0,0),"String")))
+  ]
