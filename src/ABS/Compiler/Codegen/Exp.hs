@@ -87,7 +87,7 @@ tPureExp (ABS.ENaryFunCall ql args) = do
       let bs = unifyMany tyvars declaredArgs [ABS.TPoly (ABS.U_ $ ABS.U ((0,0),"List")) ts]
           instantArgs = instantiateMany bs declaredArgs
           instantRes = instantiateOne bs declaredRes
-          es' = mUpMany instantArgs ts es
+          es' = mUpMany instantArgs [ABS.TPoly (ABS.U_ $ ABS.U ((0,0),"List")) ts] es
       pure (HS.Paren $ HS.App
                         (HS.Var $ HS.UnQual $ HS.Ident funName)
                         (HS.List es')
@@ -203,10 +203,8 @@ tPureExp (ABS.EMul l r)  = do
 tPureExp (ABS.EDiv l r)  = do 
   (e1,t1) <- tPureExp l
   (e2,t2) <- tPureExp r
-  let freshTyVar = ABS.U ((0,0),"A'")
-      declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
-      instantArgs = instantiateMany (unifyMany [freshTyVar] declaredArgs [t1,t2]) declaredArgs
-      [ue1,ue2] = mUpMany instantArgs [t1,t2] [e1,e2]
+  let declaredArgs = [ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Rat"), ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Rat")]
+      [ue1,ue2] = mUpMany declaredArgs [t1,t2] [e1,e2]
   pure ([hs|($ue1 / $ue2)|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Rat"))
 tPureExp (ABS.EMod l r)  = do
   (e1,t1) <- tPureExp l
