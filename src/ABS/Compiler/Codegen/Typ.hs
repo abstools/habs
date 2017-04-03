@@ -69,6 +69,7 @@ unifyMany tyvars args1 args2 = foldl (flip ($)) (M.fromList $ map (\ (ABS.U (_,t
       | otherwise = bs -- ignore concrete types
     unify tyvars ty1@(ABS.TSimple _) ty2 bs = bs --ignore concrete types
     unify tyvars ty1@(ABS.TPoly qu ts) ABS.TInfer bs = bs
+    unify tyvars t1@(ABS.TPoly _ _) t2@(ABS.TSimple _) _ = error $ "cannot unify " ++ show t1 ++ " to " ++  show t2
     unify tyvars ty1@(ABS.TPoly qu1 ts1) ty2@(ABS.TPoly qu2 ts2) bs =
       -- assume qu1 == qu2, haskell will check that anyway
       foldl (flip ($)) bs $ zipWith (unify tyvars) ts1 ts2

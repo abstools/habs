@@ -84,7 +84,7 @@ tPureExp (ABS.ENaryFunCall ql args) = do
   let ABS.L_ (ABS.L (_,funName))= ql
   case M.lookup (SN funName Nothing) ?st of
     Just (SV (Function tyvars declaredArgs declaredRes) _) -> do
-      let bs = unifyMany tyvars declaredArgs ts
+      let bs = unifyMany tyvars declaredArgs [ABS.TPoly (ABS.U_ $ ABS.U ((0,0),"List")) ts]
           instantArgs = instantiateMany bs declaredArgs
           instantRes = instantiateOne bs declaredRes
           es' = mUpMany instantArgs ts es

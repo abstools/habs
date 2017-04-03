@@ -20,7 +20,7 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                           M.insert (showQU qu) ( -- the symboltable indexed by the modulename
                                                      extends ds $ -- fetch the super interfaces only for the extended-interface symbols 
                                                      exports es $ -- adjust the exported flags of all the symbols
-                                                     localST m `unionDup` imports is -- union the local and imported symbols
+                                                     localST m `unionDup` imports is `unionDup` stdlibST -- union the local and imported symbols
                                                     ) acc) 
                M.empty -- start with an empty globalSTs
                ms      -- traverse *all* the modules
@@ -171,3 +171,26 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
       normalize (SN i k) = SN i $ fmap (\ (n,_) -> (n, False)) k 
                                               
       
+stdlibST :: SymbolTable
+stdlibST = M.fromList $ map (\ (k,v) -> (SN k Nothing, SV v True))
+  [ ("True", Datacons "Bool" [] [] $ TSimple $ U_ $ U ((0,0),"Bool"))
+  , ("False", Datacons "Bool" [] [] $ TSimple $ U_ $ U ((0,0),"Bool"))
+  , ("Nothing", Datacons "Maybe" [U ((0,0),"A")] [] $ TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"A")])
+  , ("Just", Datacons "Maybe" [U ((0,0),"A")] [TSimple $ U_ $ U ((0,0),"A")] $ TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"A")])
+  , ("Pair", Datacons "Pair" [U ((0,0),"A"),U ((0,0),"B")] [TSimple $ U_ $ U ((0,0),"A"),TSimple $ U_ $ U ((0,0),"B")] $ TPoly (U_ $ U ((0,0),"Pair")) [TSimple $ U_  $ U ((0,0),"A"),TSimple $ U_ $ U ((0,0),"A")])
+  , ("fromJust", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"A")]] (TSimple $ U_ $ U ((0,0),"A")))
+  , ("truncate", Function [] [TSimple $ U_ $ U ((0,0),"Rat")] (TSimple $ U_ $ U ((0,0),"Int")))
+  , ("Speed", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
+  , ("Cores", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
+  , ("Bandwidth", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
+  , ("Memory", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
+  , ("CostPerInterval", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
+  , ("DeploymentComponent", Interface (zip ["load", "total", "transfer", "decrementResources", "incrementResources", "getName", "getCreationTime"] $ repeat Nothing) M.empty)
+  , ("InfRat", Datacons "InfRat" [] [] $ TSimple $ U_ $ U ((0,0),"InfRat"))
+  , ("Fin", Datacons "InfRat" [] [TSimple $ U_ $ U ((0,0),"Rat")] $ TSimple $ U_ $ U ((0,0),"InfRat"))
+  , ("list", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]] (TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]) )
+  , ("minimum", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]] (TSimple $ U_ $ U ((0,0),"A")))
+  , ("maximum", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]] (TSimple $ U_ $ U ((0,0),"A")))
+  , ("isJust", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"A")]] (TSimple $ U_ $ U ((0,0),"Bool")))
+  , ("toString", Function [U ((0,0),"A")] [TSimple $ U_ $ U ((0,0),"A")] (TSimple $ U_ $ U ((0,0),"String")))
+  ]
