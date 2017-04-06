@@ -4,9 +4,6 @@
 [submodule "habs-runtime"]
 	path = habs-runtime
 	url = https://github.com/abstools/habs-runtime
-[submodule "habs-stdlib"]
-	path = habs-stdlib
-	url = https://github.com/abstools/habs-stdlib
 [submodule "habs-samples"]
 	path = habs-samples
 	url = https://github.com/abstools/habs-samples
