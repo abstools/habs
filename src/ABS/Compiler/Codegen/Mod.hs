@@ -32,6 +32,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                              , HS.Ident "ScopedTypeVariables" -- in ABS typevars are scoped(over the whole function),in Haskell not by default
                              , HS.Ident "FlexibleContexts" -- for some type inference of methods
                              , HS.Ident "PartialTypeSignatures" -- for inferring Eq,Ord contexts. Requires GHC>=7.10
+                             , HS.Ident "NamedWildCards" -- needed for subtyping hints together with partialtypesignatures
                              , HS.Ident "LambdaCase" -- easier codegen for exceptions extension
                              , HS.Ident "OverloadedStrings" -- for Scotty REST API
                              , HS.Ident "TemplateHaskell" -- for generating subtyping fmaps through genifunctors
@@ -99,7 +100,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "when", HS.IVar $ HS.Ident "sequence", HS.IVar $ HS.Ident "join"])
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Monad", HS.IVar $ HS.Ident "when", HS.IVar $ HS.Ident "sequence", HS.IVar $ HS.Ident "join"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Prelude" 
