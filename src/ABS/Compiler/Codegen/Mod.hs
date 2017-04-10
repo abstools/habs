@@ -5,7 +5,7 @@ module ABS.Compiler.Codegen.Mod
 
 import ABS.Compiler.Firstpass.Base
 import ABS.Compiler.Utils
-import ABS.Compiler.Codegen.Dec (tDataDecl,tDecl)
+import ABS.Compiler.Codegen.Dec (tDataInterfDecl,tRestDecl)
 import ABS.Compiler.Codegen.Stm (tMethod)
 import ABS.Compiler.CmdOpt
 
@@ -180,16 +180,18 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   in let (dataDecls, restDecls) = partition (\case 
                                             ABS.DData _ _ -> True
                                             ABS.DDataPoly _ _ _ -> True
+                                            ABS.DInterf _ _ -> True
+                                            ABS.DExtends _ _ _ -> True
                                             _ -> False) $ map (\ (ABS.AnnDecl _ d) -> d) decls
      in [dec|default (Int,Rat)|] -- better for type inference of numeric variables
-        : concatMap tDataDecl dataDecls
+        : concatMap tDataInterfDecl dataDecls
         ++ [HS.SpliceDecl noLoc' [hs|return []|]]
         -- Generate a GeniFunctor if it is a polymorphic datatype
         ++ foldl (\ acc -> \case 
                               ABS.DDataPoly (ABS.U (_,tid)) _ _ -> HS.PatBind noLoc' (HS.PVar $ HS.Ident $ "fmap'" ++ tid) (HS.UnGuardedRhs $ 
                                                                       HS.SpliceExp $ HS.ParenSplice $ [hs|I'.genFmap|] `HS.App` HS.TypQuote (HS.UnQual $ HS.Ident tid)) Nothing : acc
                               _ -> acc) [] dataDecls
-        ++ concatMap tDecl restDecls 
+        ++ concatMap tRestDecl restDecls 
         ++ tMain maybeMain)
 
   where
