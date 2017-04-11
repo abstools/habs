@@ -1046,7 +1046,7 @@ tStm (ABS.AnnStm as (ABS.SDecAss t i@(ABS.L (p,n)) e)) = do
                 _ -> False
                ) as of
       Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) (ABS.ELit (ABS.LStr str)))) -> 
-          [HS.Qualifier [hs|I'.lift ((\ v' -> I'.atomicModifyIORef' apiStore' (\ m' -> (I'.put m' $(HS.Lit $ HS.String str) (I'.toDyn v'),()) )) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident n))|]]
+          [HS.Qualifier [hs|I'.lift ((\ v' -> I'.atomicModifyIORef' apiStore' (\ m' -> (I'.insert $(HS.Lit $ HS.String str) (I'.toDyn v') m',()) )) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident n))|]]
       _ -> []) 
 
 --- DISPATCHER: LOCAL-VARIABLE OR FIELD ASSIGMENT
