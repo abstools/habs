@@ -49,9 +49,8 @@ executable habs
     filepath,
     directory,
     cmdargs,
-    -- for not having to further issue the installation of ABS-runtime dependencies
-    habs-runtime,
-    habs-stdlib
+    -- for not having to further issue the installation of ABS-runtime & stdlib dependencies
+    habs-runtime
   other-modules:
     ABS.Compiler.Firstpass.Base,
     ABS.Compiler.Firstpass.SymbolTable,
@@ -85,7 +84,6 @@ test-suite golden
     -- for running the ABS programs and comparing the stdout&stderr to a golden file
     process,
     habs-runtime,
-    habs-stdlib,
     habs-parser,
     -- for outputting a Haskell AST
     haskell-src-exts >= 1.17.0,

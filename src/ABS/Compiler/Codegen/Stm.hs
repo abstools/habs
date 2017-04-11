@@ -1095,9 +1095,9 @@ tStm (ABS.AnnStm as stmt)
       
       let trequest = HS.Qualifier $
             if onlyPureDeps
-            then let mapplied = HS.App [hs|request__|] $ fst $ runReader (let ?tyvars = [] in tPureExp costSumExp) formalParams
+            then let mapplied = HS.App [hs|request'|] $ fst $ runReader (let ?tyvars = [] in tPureExp costSumExp) formalParams
                  in maybeThisLifted fields [hs|(\ (DeploymentComponent obj') -> awaitSugar'' this obj' ($mapplied)) thisDC|]
-            else let mapplied = HS.InfixApp [hs|I'.pure request__|] (HS.QVarOp $ HS.UnQual $ HS.Symbol "<*>") $ fst $ runReader (let ?vars = localVars in tStmExp costSumExp) formalParams                     
+            else let mapplied = HS.InfixApp [hs|I'.pure request'|] (HS.QVarOp $ HS.UnQual $ HS.Symbol "<*>") $ fst $ runReader (let ?vars = localVars in tStmExp costSumExp) formalParams                     
                  in [hs|(\ (DeploymentComponent obj') -> awaitSugar'' this obj' =<< I'.lift $(maybeThis fields mapplied)) thisDC|]
       tstmt <- tStm $ ABS.AnnStm (filter (\case ABS.Ann(ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"Cost")))) pexp) -> False; _ -> True) as)
                       stmt

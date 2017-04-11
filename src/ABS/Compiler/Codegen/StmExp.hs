@@ -327,7 +327,13 @@ tStmExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LNull -> ([hs|I'.pure (up' null)|], ABS.TInfer)
 
 mUpOne :: (?st :: SymbolTable) => ABS.T -> ABS.T -> HS.Exp -> HS.Exp
-mUpOne unified actual exp = maybe exp (\ info -> HS.ExpTypeSig noLoc' [hs|( $(buildUp info) <$!> $exp )|] (HS.TyApp (HS.TyWildCard Nothing) (tType unified))) (buildInfo unified actual)
+mUpOne unified actual exp = 
+  maybe exp 
+        (\ info -> HS.ExpTypeSig noLoc' [hs|( $(buildUp info) <$!> $exp )|] 
+                                        (let wc = HS.TyWildCard $ Just $ HS.Ident "a"
+                                         in HS.TyForall Nothing [HS.ClassA (HS.Qual (HS.ModuleName "I'") (HS.Ident "Monad")) [wc]] 
+                                                $ HS.TyApp wc (tType unified))) 
+        (buildInfo unified actual)
 
 mUpMany :: (?st :: SymbolTable) => [ABS.T] -> [ABS.T] -> [HS.Exp] -> [HS.Exp]
 mUpMany = zipWith3 mUpOne

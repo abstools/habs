@@ -5,7 +5,7 @@ module ABS.Compiler.Codegen.Mod
 
 import ABS.Compiler.Firstpass.Base
 import ABS.Compiler.Utils
-import ABS.Compiler.Codegen.Dec (tDataDecl,tDecl)
+import ABS.Compiler.Codegen.Dec (tDataInterfDecl,tRestDecl)
 import ABS.Compiler.Codegen.Stm (tMethod)
 import ABS.Compiler.CmdOpt
 
@@ -32,6 +32,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                              , HS.Ident "ScopedTypeVariables" -- in ABS typevars are scoped(over the whole function),in Haskell not by default
                              , HS.Ident "FlexibleContexts" -- for some type inference of methods
                              , HS.Ident "PartialTypeSignatures" -- for inferring Eq,Ord contexts. Requires GHC>=7.10
+                             , HS.Ident "NamedWildCards" -- needed for subtyping hints together with partialtypesignatures
                              , HS.Ident "LambdaCase" -- easier codegen for exceptions extension
                              , HS.Ident "OverloadedStrings" -- for Scotty REST API
                              , HS.Ident "TemplateHaskell" -- for generating subtyping fmaps through genifunctors
@@ -101,7 +102,7 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "when", HS.IVar $ HS.Ident "sequence", HS.IVar $ HS.Ident "join"])
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Monad", HS.IVar $ HS.Ident "when", HS.IVar $ HS.Ident "sequence", HS.IVar $ HS.Ident "join"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Prelude" 
@@ -181,16 +182,18 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
   in let (dataDecls, restDecls) = partition (\case 
                                             ABS.DData _ _ -> True
                                             ABS.DDataPoly _ _ _ -> True
+                                            ABS.DInterf _ _ -> True
+                                            ABS.DExtends _ _ _ -> True
                                             _ -> False) $ map (\ (ABS.AnnDecl _ d) -> d) decls
      in [dec|default (Int,Rat)|] -- better for type inference of numeric variables
-        : concatMap tDataDecl dataDecls
+        : concatMap tDataInterfDecl dataDecls
         ++ [HS.SpliceDecl noLoc' [hs|return []|]]
         -- Generate a GeniFunctor if it is a polymorphic datatype
         ++ foldl (\ acc -> \case 
                               ABS.DDataPoly (ABS.U (_,tid)) _ _ -> HS.PatBind noLoc' (HS.PVar $ HS.Ident $ "fmap'" ++ tid) (HS.UnGuardedRhs $ 
                                                                       HS.SpliceExp $ HS.ParenSplice $ [hs|I'.genFmap|] `HS.App` HS.TypQuote (HS.UnQual $ HS.Ident tid)) Nothing : acc
                               _ -> acc) [] dataDecls
-        ++ concatMap tDecl restDecls 
+        ++ concatMap tRestDecl restDecls 
         ++ tMain maybeMain)
 
   where
