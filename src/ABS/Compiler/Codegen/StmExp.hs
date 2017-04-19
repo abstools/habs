@@ -5,6 +5,7 @@
 module ABS.Compiler.Codegen.StmExp
     ( tStmExp
     , mUpOne
+    , mUpMany
     ) where
 
 import ABS.Compiler.Codegen.Base

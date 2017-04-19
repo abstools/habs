@@ -3,6 +3,7 @@ module ABS.Compiler.Codegen.Exp
     ( tFunBody
     , tPureExp
     , mUpOne
+    , mUpMany
     )where
 
 import ABS.Compiler.Codegen.Base
