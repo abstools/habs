@@ -38,7 +38,7 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                               acc 
                                               qas
         StarFromImport YesForeign _ -> acc -- now ignore, todo: requires ghc-api
-        StarFromImport NoForeign from | showQU from == "ABS.StdLib" && not (nostdlib cmdOpt) -> acc -- ignore if it is absstdlib
+        StarFromImport NoForeign from | (showQU from == "ABS.StdLib" || showQU from == "ABS.DC")  && not (nostdlib cmdOpt) -> acc -- ignore if it is absstdlib
         StarFromImport NoForeign from -> let sTyp = showQU from
                                              exported = M.filter (\ (SV _ isExported) -> isExported) $ fromMaybe (error "no such module") $ M.lookup sTyp $ globalSTs ms
                                          in M.union acc $ M.map (\ (SV v _) -> SV v False) 
@@ -102,7 +102,7 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
       -- | Only checks the in-module decls and builds an "unfinished" global symbol table
       localST :: Module -> SymbolTable
       localST (Module _ es _ decls _) = foldl (\ acc (AnnDecl _ d) -> f d acc) 
-                                 (M.singleton (SN "DeploymentComponent" Nothing) (SV (Interface (map (\x -> (x,Nothing)) ["load","total", "transfer","decrementResources", "incrementResources", "getName", "getCreationTime", "getStartupDuration", "getShutdownDuration", "getPaymentInterval", "getCostPerInterval", "getNumberOfCores", "acquire", "release", "shutdown_"]) M.empty) False)) -- start with an empty symbol table
+                                 M.empty -- start with an empty symbol table
                                  decls   -- traverse all the local declarations
           where
 
@@ -177,7 +177,7 @@ stdlibST = M.fromList $ map (\ (k,v) -> (SN k Nothing, SV v True))
   , ("False", Datacons "Bool" [] [] $ TSimple $ U_ $ U ((0,0),"Bool"))
   , ("Nothing", Datacons "Maybe" [U ((0,0),"A")] [] $ TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"A")])
   , ("Just", Datacons "Maybe" [U ((0,0),"A")] [TSimple $ U_ $ U ((0,0),"A")] $ TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"A")])
-  , ("Pair", Datacons "Pair" [U ((0,0),"A"),U ((0,0),"B")] [TSimple $ U_ $ U ((0,0),"A"),TSimple $ U_ $ U ((0,0),"B")] $ TPoly (U_ $ U ((0,0),"Pair")) [TSimple $ U_  $ U ((0,0),"A"),TSimple $ U_ $ U ((0,0),"A")])
+  , ("Pair", Datacons "Pair" [U ((0,0),"A"),U ((0,0),"B")] [TSimple $ U_ $ U ((0,0),"A"),TSimple $ U_ $ U ((0,0),"B")] $ TPoly (U_ $ U ((0,0),"Pair")) [TSimple $ U_  $ U ((0,0),"A"),TSimple $ U_ $ U ((0,0),"B")])
   , ("fromJust", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"A")]] (TSimple $ U_ $ U ((0,0),"A")))
   , ("truncate", Function [] [TSimple $ U_ $ U ((0,0),"Rat")] (TSimple $ U_ $ U ((0,0),"Int")))
   , ("Speed", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
@@ -185,7 +185,6 @@ stdlibST = M.fromList $ map (\ (k,v) -> (SN k Nothing, SV v True))
   , ("Bandwidth", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
   , ("Memory", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
   , ("CostPerInterval", Datacons "Resourcetype" [] [] $ TSimple $ U_ $ U ((0,0), "Resourcetype"))
-  --, ("DeploymentComponent", Interface (zip ["load", "total", "transfer", "decrementResources", "incrementResources", "getName", "getCreationTime"] $ repeat Nothing) M.empty)
   , ("InfRat", Datacons "InfRat" [] [] $ TSimple $ U_ $ U ((0,0),"InfRat"))
   , ("Fin", Datacons "InfRat" [] [TSimple $ U_ $ U ((0,0),"Rat")] $ TSimple $ U_ $ U ((0,0),"InfRat"))
   , ("list", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]] (TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]) )
@@ -210,4 +209,23 @@ stdlibST = M.fromList $ map (\ (k,v) -> (SN k Nothing, SV v True))
   , ("timeValue", Function [] [TSimple $ U_ $ U ((0,0),"Time")] $ TSimple $ U_ $ U ((0,0),"Rat"))
   , ("reverse", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]] (TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]))
   , ("finvalue", Function [] [TSimple $ U_ $ U ((0,0),"InfRat")] $ TSimple $ U_ $ U ((0,0),"Rat"))
+  , ("set", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"A")]] (TPoly (U_ $ U ((0,0),"Set")) [TSimple $ U_ $ U ((0,0),"A")]) )
+  , ("map", Function [U ((0,0),"A"),U ((0,0),"B")] [TPoly (U_ $ U ((0,0),"List")) [TPoly (U_ $ U ((0,0),"Pair")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")]]] (TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")]) )
+  , ("lookupDefault", Function [U ((0,0),"A"),U ((0,0),"B")] [TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")],TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")] (TSimple $ U_ $ U ((0,0),"B")) )
+  , ("lookupUnsafe", Function [U ((0,0),"A"),U ((0,0),"B")] [TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")],TSimple $ U_ $ U ((0,0),"A")] (TSimple $ U_ $ U ((0,0),"B")) )
+  , ("lookup", Function [U ((0,0),"A"),U ((0,0),"B")] [TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")],TSimple $ U_ $ U ((0,0),"A")] (TPoly (U_ $ U ((0,0),"Maybe")) [TSimple $ U_ $ U ((0,0),"B")]) )
+  , ("put", Function [U ((0,0),"A"),U ((0,0),"B")] [TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")],TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")] (TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")] ))
+  , ("removeKey", Function [U ((0,0),"A"),U ((0,0),"B")] [TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")],TSimple $ U_ $ U ((0,0),"A")] (TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")] ))
+  , ("values", Function [U ((0,0),"A"),U ((0,0),"B")] [TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")]] (TPoly (U_ $ U ((0,0),"List")) [TSimple $ U_ $ U ((0,0),"B")] ))
+  , ("keys", Function [U ((0,0),"A"),U ((0,0),"B")] [TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")]] (TPoly (U_ $ U ((0,0),"Set")) [TSimple $ U_ $ U ((0,0),"A")] ))
+  , ("emptySet", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"Set")) [TSimple $ U_ $ U ((0,0),"A")]] (TSimple $ U_ $ U ((0,0),"Bool") ))
+  , ("EmptySet", Datacons "Set" [U ((0,0),"A")] [] $ TPoly (U_ $ U ((0,0),"Set")) [TSimple $ U_ $ U ((0,0),"A")])
+  , ("remove", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"Set")) [TSimple $ U_ $ U ((0,0),"A")],TSimple $ U_ $ U ((0,0),"A")] (TPoly (U_ $ U ((0,0),"Set")) [TSimple $ U_ $ U ((0,0),"A")] ))
+  , ("next", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"Set")) [TSimple $ U_ $ U ((0,0),"A")]] (TPoly (U_ $ U ((0,0),"Pair")) [TPoly (U_ $ U ((0,0),"Set")) [TSimple $ U_ $ U ((0,0),"A")], TSimple $ U_ $ U ((0,0),"A")]))
+  , ("insertElement", Function [U ((0,0),"A")] [TPoly (U_ $ U ((0,0),"Set")) [TSimple $ U_ $ U ((0,0),"A")],TSimple $ U_ $ U ((0,0),"A")] (TPoly (U_ $ U ((0,0),"Set")) [TSimple $ U_ $ U ((0,0),"A")] ))
+  , ("EmptyMap", Datacons "Map" [U ((0,0),"A"), U ((0,0),"B")] [] $ TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")])
+  , ("InsertAssoc", Datacons "Map" [U ((0,0),"A"), U ((0,0),"B")] [TPoly (U_ $ U ((0,0),"Pair")) [TSimple $ U_  $ U ((0,0),"A"),TSimple $ U_ $ U ((0,0),"B")], TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")]] $ TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"A"), TSimple $ U_ $ U ((0,0),"B")])  
+  , ("DeploymentComponent", Interface (map (\x -> (x,Nothing)) ["load","total", "transfer","decrementResources", "incrementResources", "getName", "getCreationTime", "getStartupDuration", "getShutdownDuration", "getPaymentInterval", "getCostPerInterval", "getNumberOfCores", "acquire", "release", "shutdown_"]) M.empty)
+  , ("CloudProvider", Interface (map (\x -> (x,Nothing)) ["prelaunchInstance","launchInstance","acquireInstance","releaseInstance", "shutdownInstance", "getAccumulatedCost", "shutdown", "setInstanceDescriptions", "addInstanceDescription", "removeInstanceDescription", "getInstanceDescriptions", "prelaunchInstanceNamed", "launchInstanceNamed"]) M.empty)
+  , ("SimCloudProvider", Class [TSimple $ U_ $ U ((0,0), "CloudProvider")] [TSimple $ U_ $ U ((0,0),"String")])
   ]

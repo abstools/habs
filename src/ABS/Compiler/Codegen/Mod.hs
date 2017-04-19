@@ -55,10 +55,10 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                      , HS.importQualified = False
                      , HS.importAs = Nothing
                      , HS.importLoc = noLoc', HS.importSrc = False, HS.importPkg = Nothing
-                     , HS.importSpecs = Just (True, map (HS.IVar . HS.Ident) ["Map","map","_emptyMap","put","insert","lookup","lookupMaybe","lookupUnsafe","lookupDefault","removeKey","keys","values","Set","set","_emptySet","emptySet","size","contains","union","intersection","difference","insertElement","remove","take","hasNext","next"])
+                     , HS.importSpecs = Nothing
                      , HS.importSafe = False
                      } :)) 
-  ([ HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.Runtime"
+  ([HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.Runtime"
                    , HS.importQualified = False
                    , HS.importAs = Nothing
                    , HS.importLoc = noLoc', HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
@@ -148,22 +148,16 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "toDyn", HS.IVar $ HS.Ident "fromDynamic"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Map" 
+  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Map.Lazy" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "lookup"])
+                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "lookup", HS.IVar $ HS.Ident "insert"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Web.Scotty" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
                   , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "get", HS.IVar $ HS.Ident "param", HS.IVar $ HS.Ident "json", HS.IVar $ HS.Ident "raise"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.StdLib" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "put"])
                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Generics.Genifunctors" 
