@@ -9,7 +9,7 @@ import ABS.Compiler.Utils
 import ABS.Compiler.CmdOpt
 
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.List (find)
 
 -- | Computes the symboltables of all the parsed modules
@@ -130,8 +130,13 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                   (SN s' Nothing, SV (Function [] (map (\ (FormalPar t _) -> t) params) ot) False)
                               ) ms')))
 
-            f (DClassParImplements (U (_, s)) formalPars interfs _ _ _) = insertDup (SN s Nothing) 
-                                                            (SV (Class (map TSimple interfs) (map (\ (FormalPar t _) -> t) formalPars)) sureExported)
+            f (DClassParImplements (U (_, s)) formalPars interfs cb1 _ cb2) = unionDup 
+              (insertDup (SN s Nothing) 
+                         (SV (Class (map TSimple interfs) (map (\ (FormalPar t _) -> t) formalPars)) sureExported)
+                         (M.fromList $ mapMaybe (\case 
+                                          MethClassBody ot (L (_,s')) params _ -> Just (SN s' Nothing, SV (Function [] (map (\ (FormalPar t _) -> t) params) ot) False)
+                                          _ -> Nothing
+                                       ) (cb1++cb2)))
 
             f (DException (SinglConstrIdent (U (_, s)))) = insertDup (SN s Nothing) 
                                                                     (SV Exception sureExported)
@@ -140,9 +145,9 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
             f (DFun t l params _) = f (DFunPoly t l [] params undefined)
             f (DData i cs) = f (DDataPoly i [] cs)
             f (DTypePoly i _ _) = f (DType i undefined)
-            f (DClass i _ _ _) = f (DClassParImplements i [] [] undefined undefined undefined)
-            f (DClassPar i ps _ _ _) = f (DClassParImplements i ps [] undefined undefined undefined)
-            f (DClassImplements i interfs _ _ _) = f (DClassParImplements i [] interfs undefined undefined undefined)
+            f (DClass i cb1 _ cb2) = f (DClassParImplements i [] [] cb1 undefined cb2)
+            f (DClassPar i ps cb1 _ cb2) = f (DClassParImplements i ps [] cb1 undefined cb2)
+            f (DClassImplements i interfs cb1 _ cb2) = f (DClassParImplements i [] interfs cb1 undefined cb2)
             f (DExtends i _ ms') = f (DInterf i ms') -- the super interfaces are filled later by the function extends
             f (DException (ParamConstrIdent i _)) = f (DException (SinglConstrIdent i))               
             f' d tyvars (SinglConstrIdent u) = f' d tyvars (ParamConstrIdent u [])
@@ -169,8 +174,8 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                 _ -> False) es
 
       -- utils
-      unionDup = M.unionWith (\ x y -> error $ "duplicate symbol" ++ show x ++ show y)
-      insertDup = M.insertWithKey (\ (SN s _) _ _ -> error ("already declared: " ++ s))
+      unionDup = M.union -- M.unionWith (\ x y -> error $ "duplicate symbol" ++ show x ++ show y)
+      insertDup = M.insert -- M.insertWithKey (\ (SN s _) _ _ -> error ("already declared: " ++ s))
       normalize (SN i k) = SN i $ fmap (\ (n,_) -> (n, False)) k 
                                               
       
@@ -231,4 +236,20 @@ stdlibST = M.fromList $ map (\ (k,v) -> (SN k Nothing, SV v True))
   , ("DeploymentComponent", Interface (map (\x -> (x,Nothing)) ["load","total", "transfer","decrementResources", "incrementResources", "getName", "getCreationTime", "getStartupDuration", "getShutdownDuration", "getPaymentInterval", "getCostPerInterval", "getNumberOfCores", "acquire", "release", "shutdown_"]) M.empty)
   , ("CloudProvider", Interface (map (\x -> (x,Nothing)) ["prelaunchInstance","launchInstance","acquireInstance","releaseInstance", "shutdownInstance", "getAccumulatedCost", "shutdown", "setInstanceDescriptions", "addInstanceDescription", "removeInstanceDescription", "getInstanceDescriptions", "prelaunchInstanceNamed", "launchInstanceNamed"]) M.empty)
   , ("SimCloudProvider", Class [TSimple $ U_ $ U ((0,0), "CloudProvider")] [TSimple $ U_ $ U ((0,0),"String")])
+  , ("addInstanceDescription", Function [] [TPoly (U_ $ U ((0,0),"Pair")) [TSimple $ U_  $ U ((0,0),"String"),TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"Resourcetype"), TSimple $ U_ $ U ((0,0),"Rat")]]] (TSimple $ U_ $ U ((0,0),"Unit")))
+  , ("prelaunchInstance", Function [] [TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"Resourcetype"), TSimple $ U_ $ U ((0,0),"Rat")]] (TSimple $ U_ $ U ((0,0),"DeploymentComponent")))
+  , ("prelaunchInstanceNamed", Function [] [TSimple $ U_ $ U ((0,0),"String")] (TSimple $ U_ $ U ((0,0),"DeploymentComponent")))
+  , ("launchInstance", Function [] [TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"Resourcetype"), TSimple $ U_ $ U ((0,0),"Rat")]] (TSimple $ U_ $ U ((0,0),"DeploymentComponent")))
+  , ("launchInstanceNamed", Function [] [TSimple $ U_ $ U ((0,0),"String")] (TSimple $ U_ $ U ((0,0),"DeploymentComponent")))
+  , ("acquireInstance", Function [] [TSimple $ U_ $ U ((0,0),"DeploymentComponent")] (TSimple $ U_ $ U ((0,0),"Bool")))
+  , ("releaseInstance", Function [] [TSimple $ U_ $ U ((0,0),"DeploymentComponent")] (TSimple $ U_ $ U ((0,0),"Bool")))
+  , ("shutdownInstance", Function [] [TSimple $ U_ $ U ((0,0),"DeploymentComponent")] (TSimple $ U_ $ U ((0,0),"Bool")))
+  , ("getAccumulatedCost", Function [] [] (TSimple $ U_ $ U ((0,0),"Rat")))
+  , ("setInstanceDescriptions", Function [] [TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"String"), TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"Resourcetype"), TSimple $ U_ $ U ((0,0),"Rat")]]] (TSimple $ U_ $ U ((0,0),"Unit")))
+  , ("addInstanceDescription", Function [] [TPoly (U_ $ U ((0,0),"Pair")) [TSimple $ U_ $ U ((0,0),"String"), TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"Resourcetype"), TSimple $ U_ $ U ((0,0),"Rat")]]] (TSimple $ U_ $ U ((0,0),"Unit")))
+  , ("removeInstanceDescription", Function [] [TSimple $ U_ $ U ((0,0),"String")] (TSimple $ U_ $ U ((0,0),"Unit")))
+  , ("getInstanceDescriptions", Function [] [] (TPoly (U_ $ U ((0,0),"Map")) [TSimple $ U_ $ U ((0,0),"Resourcetype"), TSimple $ U_ $ U ((0,0),"Rat")]))
+  , ("shutdown", Function [] [] (TSimple $ U_ $ U ((0,0),"Unit")))
+  , ("total", Function [] [TSimple $ U_ $ U ((0,0),"Resourcetype")] (TSimple $ U_ $ U ((0,0),"InfRat")))
+  , ("getName", Function [] [] (TSimple $ U_ $ U ((0,0),"String")))
   ]
