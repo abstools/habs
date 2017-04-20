@@ -116,9 +116,9 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
             f (DFunPoly ot (L (_, s)) tyvars params _) = insertDup (SN s Nothing) 
                                                           (SV (Function tyvars (map (\ (FormalPar t _) -> t) params) ot) sureExported)
 
-            f (DInterf (U (_, s)) ms') = insertDup (SN s Nothing) 
-              (SV (Interface 
-                (map (\ (MethSig as _ (L (_,s')) ps) -> (s', if any (\case 
+            f (DInterf (U (_, s)) ms') = unionDup (insertDup (SN s Nothing) 
+                (SV (Interface 
+                  (map (\ (MethSig as _ (L (_,s')) ps) -> (s', if any (\case 
                                                                   Ann (AnnNoType (ESinglConstr qu)) -> showQU qu == "HTTPCallable"
                                                                   _ -> False
                                                                 ) as
@@ -126,6 +126,9 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
                                                              else Nothing)) ms') -- add also its direct methods
                                                                 M.empty) -- no super interfaces
                                                             sureExported)
+                  (M.fromList (map (\ (MethSig _ ot (L (_,s')) params) -> -- TODO: makes method to name-clash with functions
+                                  (SN s' Nothing, SV (Function [] (map (\ (FormalPar t _) -> t) params) ot) False)
+                              ) ms')))
 
             f (DClassParImplements (U (_, s)) formalPars interfs _ _ _) = insertDup (SN s Nothing) 
                                                             (SV (Class (map TSimple interfs) (map (\ (FormalPar t _) -> t) formalPars)) sureExported)
@@ -142,10 +145,10 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
             f (DClassImplements i interfs _ _ _) = f (DClassParImplements i [] interfs undefined undefined undefined)
             f (DExtends i _ ms') = f (DInterf i ms') -- the super interfaces are filled later by the function extends
             f (DException (ParamConstrIdent i _)) = f (DException (SinglConstrIdent i))               
-            f' d tyvars (SinglConstrIdent u) acc = f' d tyvars (ParamConstrIdent u []) acc
+            f' d tyvars (SinglConstrIdent u) = f' d tyvars (ParamConstrIdent u [])
 
             -- data constructors
-            f' d@(U (_,dname)) tyvars (ParamConstrIdent i@(U (_,cname)) args) acc = 
+            f' d@(U (_,dname)) tyvars (ParamConstrIdent i@(U (_,cname)) args) = \ acc -> 
               -- this fold is for maybe adding any record field as a function
               foldr (\case
                         RecordConstrType t (L (_,s)) -> 
