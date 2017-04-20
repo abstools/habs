@@ -185,6 +185,7 @@ tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) ar
             Nothing -> errorPos p "no such field"
          ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
          _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
+    _ -> errorPos p "cannot find such method name"
 
 tAss _ _ (ABS.L (_,n)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) args)) = 
   case M.lookup (SN mname Nothing) ?st of
@@ -280,6 +281,7 @@ tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) a
             Nothing -> errorPos p "no such field"
         ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
         _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
+    _ -> errorPos p "cannot find such method name"
 
 tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args)) =
   case M.lookup (SN mname Nothing) ?st of
@@ -355,6 +357,7 @@ tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AwaitMethCall pexp (ABS.L (p,mname)) a
             Nothing -> errorPos p "no such field"
         ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
         _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
+    _ -> errorPos p "cannot find such method name"
 
 
 tAss _ t (ABS.L (_,n)) (ABS.ExpE (ABS.Get pexp)) = do
@@ -530,8 +533,9 @@ tDecAss a t i (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
             Nothing -> errorPos p "no such field"
          ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
          _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
+    _ -> errorPos p "cannot find such method name"
 
-tDecAss _ _ _ (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) args)) = 
+tDecAss _ _ _ (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (p,mname)) args)) = 
   case M.lookup (SN mname Nothing) ?st of
     Just (SV (Function _ declaredArgs declaredRes) _) -> do
         (formalParams, localVars) <- getFormalLocal
@@ -549,6 +553,7 @@ tDecAss _ _ _ (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) args)) =
                                                 [hs|I'.pure $(maybeMangleCall mname)|]
                                                 es'
                in [hs|(I'.lift . I'.newIORef) =<< ((this <..>) =<< I'.lift $(maybeThis fields mapplied))|]
+    _ -> errorPos p "cannot find such method name"
 
 tDecAss a t i (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
   case M.lookup (SN mname Nothing) ?st of
@@ -624,6 +629,7 @@ tDecAss a t i (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
             Nothing -> errorPos p "no such field"
         ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
         _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
+    _ -> errorPos p "cannot find such method name"
 
 
 tDecAss _ t _ (ABS.ExpE (ABS.Get pexp)) = do
@@ -755,6 +761,7 @@ tFieldAss a _ (ABS.L (_, field)) (ABS.ExpE (ABS.AwaitMethCall pexp (ABS.L (p,mna
             Nothing -> errorPos p "no such field"
         ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
         _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
+    _ -> errorPos p "cannot find such method name"
 
 
 tFieldAss _ tprincipal (ABS.L (_,field)) (ABS.ExpP pexp) = do
@@ -892,8 +899,9 @@ tFieldAss a _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mna
             Nothing -> errorPos p "no such field"
          ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
          _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
+    _ -> errorPos p "cannot find such method name"
 
-tFieldAss _ _ (ABS.L (_,field)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) args)) = 
+tFieldAss _ _ (ABS.L (_,field)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (p,mname)) args)) = 
   case M.lookup (SN mname Nothing) ?st of
     Just (SV (Function _ declaredArgs declaredRes) _) -> do
         (formalParams, localVars) <- getFormalLocal
@@ -910,6 +918,7 @@ tFieldAss _ _ (ABS.L (_,field)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)
                                                 [hs|I'.pure $(maybeMangleCall mname)|]
                                                 es'
                in [hs|(I'.lift . I'.writeIORef this') =<< ((\ this'' -> (\ v' -> $(recordUpdate field)) <$!> ((this <..>) =<< I'.lift ($mapplied))) =<< I'.lift (I'.readIORef this'))|]
+    _ -> errorPos p "cannot find such method name"
 
 tFieldAss a _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
   case M.lookup (SN mname Nothing) ?st of
@@ -999,6 +1008,7 @@ tFieldAss a _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mn
             Nothing -> errorPos p "no such field"
         ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
         _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
+    _ -> errorPos p "cannot find such method name"
 
 
 tFieldAss _ t (ABS.L (_,field)) (ABS.ExpE (ABS.Get pexp)) = do
@@ -1597,6 +1607,7 @@ tEffExp a (ABS.SyncMethCall pexp (ABS.L (p,mname)) args) _isAlone =
         ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
         _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
     _ -> errorPos p "cannot find such method name"
+    _ -> errorPos p "cannot find such method name"
 
 
 
@@ -1859,6 +1870,7 @@ tEffExp a (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args) False =
             Nothing -> errorPos p "no such field"
         ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
         _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
+    _ -> errorPos p "cannot find such method name"
  where
       wrapNewVar tawait = [hs|do 
                                 return' <- I'.lift (I'.newIORef I'.undefined)
