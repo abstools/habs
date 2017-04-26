@@ -91,18 +91,10 @@ tStmExp (ABS.EFunCall (ABS.L_ (ABS.L (_,cid))) args) =
                           es', instantRes)
     _ -> error $ "cannot find function " ++ cid
 
-tStmExp (ABS.ENaryFunCall ql args) = do
-    (es,ts) <- unzip <$> mapM tStmExp args
-    let ABS.L_ (ABS.L (_,funName))= ql
-    case M.lookup (SN funName Nothing) ?st of
-      Just (SV (Function tyvars declaredArgs declaredRes) _) -> do
-        let bs = unifyMany tyvars declaredArgs [ABS.TPoly (ABS.U_ $ ABS.U ((0,0),"List")) ts]
-            instantArgs = instantiateMany bs declaredArgs
-            instantRes = instantiateOne bs declaredRes
-            es' = mUpMany instantArgs [ABS.TPoly (ABS.U_ $ ABS.U ((0,0),"List")) ts] es
-        pure ([hs|($(HS.Var $ HS.UnQual $ HS.Ident $ showQL ql) <$!> (I'.sequence $(HS.List es')))|], instantRes)
-      _ -> error $ "cannot find function " ++ funName
-
+tStmExp (ABS.ENaryFunCall ql args) = 
+  -- translate to a unary function with the 1st arg being a fold of cons
+  tStmExp (ABS.EFunCall ql [foldr 
+      (\ arg acc -> ABS.EParamConstr (ABS.U_ $ ABS.U ((0,0),"Cons")) [arg,acc])  (ABS.ESinglConstr $ ABS.U_ $ ABS.U ((0,0),"Nil")) args])
 
 -- constants
 tStmExp (ABS.EEq (ABS.ELit ABS.LNull) (ABS.ELit ABS.LNull)) = pure ([hs|I'.pure True|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Bool"))
