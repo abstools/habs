@@ -315,6 +315,7 @@ tPureExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LStr str -> (HS.Lit $ HS.String str, ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"String"))
                                    ABS.LInt i -> (HS.Lit $ HS.Int i, ABS.TInfer)
                                    --(HS.ExpTypeSig noLoc' (HS.Lit $ HS.Int i) [ty|Int|], ABS.TSimple $ ABS.U_ $ ABS.U $ ((0,0),"Int"))
+                                   ABS.LFloat f -> (HS.Lit $ HS.Frac $ toRational f, ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Rat"))
                                    ABS.LThis -> if null ?cname
                                                 then error "cannot access this keyword inside main block or pure code"
                                                 else ([hs|(up' this)|],ABS.TInfer)
