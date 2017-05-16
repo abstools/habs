@@ -1924,10 +1924,10 @@ tEffExp _ ABS.Readln _ = pure $ maybeLift [hs|readln|]
 
 addToScope :: ABS.T -> ABS.L -> BlockScope ()
 addToScope typ var@(ABS.L (p,pid)) = do
-  (topscope:restscopes) <- get
-  if (any (\ scope -> var `M.member` scope) restscopes)
-    then errorPos p $ pid ++ " already defined in an outer scope"
-    else put $ M.insertWith (const $ const $ errorPos p $ pid ++ " already defined in this scope") var typ topscope  : restscopes
+  scopes@(topscope:restscopes) <- get
+  if (any (var `M.member`) scopes)
+    then errorPos p $ pid ++ " already defined"
+    else put $ M.insert var typ topscope  : restscopes
 
 maybeLift :: (?isInit::Bool) => HS.Exp -> HS.Exp
 maybeLift e = if ?isInit then e else [hs|I'.lift ($e)|]
