@@ -7,9 +7,9 @@ A Haskell library to translate ABS programs to Haskell equivalent code.
 
 # Prerequisites
 
-Before installing the HABS backend, you need the Glasgow Haskell Compiler (**GHC**) version >= 7.10.
+Before installing the HABS backend, you need the Glasgow Haskell Compiler (**GHC**) version >= 8.
 
-a) Getting GHC on Ubuntu-Linux >= 16.04
+a) Getting GHC on Ubuntu-Linux >= 17.04
 
 ```bash
 apt-get update
