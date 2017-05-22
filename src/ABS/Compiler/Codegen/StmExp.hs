@@ -310,9 +310,8 @@ tStmExp (ABS.EField var@(ABS.L (p, field))) = if null ?cname
                                                          Just t -> let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ field ++ "'" ++ ?cname
                                                                   in pure ([hs|I'.pure ($fieldFun this'')|], t)
                                                          Nothing -> errorPos p "no such field"
-
 tStmExp (ABS.ELit lit) = pure $ case lit of
-                                   ABS.LStr str -> ([hs|I'.pure $(HS.Lit $ HS.String str)|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"String"))
+                                   ABS.LStr str -> ([hs|I'.pure $(HS.ExpTypeSig noLoc' (HS.Lit $ HS.String str) (HS.TyCon (HS.UnQual $ HS.Ident "String")))|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"String")) -- type for OverloadedStrings disambiguate
                                    ABS.LInt i ->  ([hs|I'.pure $(HS.Lit $ HS.Int i)|], ABS.TInfer)
                                    ABS.LThis -> if null ?cname
                                                then error "cannot access this keyword inside main block"
