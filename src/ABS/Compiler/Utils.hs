@@ -14,15 +14,10 @@ module ABS.Compiler.Utils
     ) where
 
 import qualified ABS.AST as ABS
-import ABS.Compiler.Firstpass.Base
 import Language.Haskell.Exts.SrcLoc (SrcLoc (..))
-import qualified Data.Map as M
 
 import Data.Char (toLower)
 import Debug.Trace (trace)
-
-import Control.Exception (assert)
-#define todo assert False (error "not implemented yet")
 
 appendL :: ABS.L -> String -> ABS.L
 appendL (ABS.L (p,s)) s' = ABS.L (p,s++s') 

@@ -290,7 +290,7 @@ tStmExp (ABS.EParamConstr qu args) = do
   --                                 Just (SV Exception _) -> HS.Paren . HS.InfixApp [hs|I'.toException|] (HS.QConOp $ HS.UnQual $ HS.Symbol "<$!>")
   --                                 _ -> id
                                  
-tStmExp (ABS.EVar var@(ABS.L (p,pid))) = do
+tStmExp (ABS.EVar var@(ABS.L (_p,pid))) = do
      scope <- ask
      pure $ case M.lookup var scope of
               Just t -> ([hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident pid)|], t)
@@ -301,7 +301,7 @@ tStmExp (ABS.EVar var@(ABS.L (p,pid))) = do
                                               in ([hs|I'.pure ($fieldFun this'')|], t)
                                     Nothing-> case find (\ (SN ident' modul,_) -> pid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
                                                Just (_,SV Foreign _) -> (HS.Var $ HS.UnQual $ HS.Ident pid, ABS.TInfer)
-                                               _ ->  ([hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident pid)|], ABS.TInfer) -- errorPos p $ pid ++ " not in scope" --  -- 
+                                               _ ->  ([hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident pid)|], ABS.TInfer) -- errorPos _p $ pid ++ " not in scope" --  -- 
 
 
 tStmExp (ABS.EField var@(ABS.L (p, field))) = if null ?cname
@@ -313,15 +313,16 @@ tStmExp (ABS.EField var@(ABS.L (p, field))) = if null ?cname
 tStmExp (ABS.ELit lit) = pure $ case lit of
                                    ABS.LStr str -> ([hs|I'.pure $(HS.ExpTypeSig noLoc' (HS.Lit $ HS.String str) (HS.TyCon (HS.UnQual $ HS.Ident "String")))|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"String")) -- type for OverloadedStrings disambiguate
                                    ABS.LInt i ->  ([hs|I'.pure $(HS.Lit $ HS.Int i)|], ABS.TInfer)
+                                   ABS.LFloat f -> ([hs|I'.pure $(HS.Lit $ HS.Frac $ toRational f)|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Rat"))
                                    ABS.LThis -> if null ?cname
                                                then error "cannot access this keyword inside main block"
                                                else ([hs|I'.pure (up' this)|], ABS.TInfer)
                                    ABS.LNull -> ([hs|I'.pure (up' null)|], ABS.TInfer)
 
 mUpOne :: (?st :: SymbolTable) => ABS.T -> ABS.T -> HS.Exp -> HS.Exp
-mUpOne unified actual exp = 
-  maybe exp 
-        (\ info -> HS.ExpTypeSig noLoc' [hs|( $(buildUp info) <$!> $exp )|] 
+mUpOne unified actual e = 
+  maybe e 
+        (\ info -> HS.ExpTypeSig noLoc' [hs|( $(buildUp info) <$!> $e )|] 
                                         (let wc = HS.TyWildCard $ Just $ HS.Ident "a"
                                          in HS.TyForall Nothing [HS.ClassA (HS.Qual (HS.ModuleName "I'") (HS.Ident "Monad")) [wc]] 
                                                 $ HS.TyApp wc (tType unified))) 

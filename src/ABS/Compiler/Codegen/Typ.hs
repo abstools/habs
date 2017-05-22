@@ -19,6 +19,7 @@ import Data.List (find)
 
 import Control.Exception (assert)
 #define todo assert False (error "not implemented yet")
+#define total assert False (error "This error should not happen. Contact developers")
 
 -- | Translating an ABS type or an ABS type-variable to a Haskell type
 tTypeOrTyVar :: [ABS.U]     -- ^ tyvars in scope
@@ -54,26 +55,29 @@ instantiateMany bs = foldr (\ v acc -> instantiateOne bs v : acc) []
 --                               _ -> id) []
 
 
-
-unifyMany tyvars args1 args2 = foldl (flip ($)) (M.fromList $ map (\ (ABS.U (_,tyvarName)) -> (tyvarName,ABS.TInfer)) tyvars) $ zipWith (unify tyvars) args1 args2
+unifyMany :: (?st::SymbolTable) 
+          => [ABS.U] 
+          -> [ABS.T] 
+          -> [ABS.T] 
+          -> M.Map String ABS.T
+unifyMany tyvars args1 args2 = foldl (flip ($)) (M.fromList $ map (\ (ABS.U (_,tyvarName)) -> (tyvarName,ABS.TInfer)) tyvars) $ zipWith unify args1 args2
   where
     unify :: (?st :: SymbolTable)
-          => [ABS.U] 
-          -> ABS.T 
+          => ABS.T 
           -> ABS.T
           -> M.Map String ABS.T 
           -> M.Map String ABS.T
     -- 1. Any type variable unifies with any type expression, and is instantiated to that expression. A specific theory might restrict this rule with an occurs check.
-    unify tyvars ty1@(ABS.TSimple (ABS.U_ mtyvar1@(ABS.U (_, mtyvar1String)))) ty2 bs 
+    unify (ABS.TSimple (ABS.U_ mtyvar1@(ABS.U (_, mtyvar1String)))) ty2 bs 
       | mtyvar1 `elem` tyvars = M.insertWith mostGeneral mtyvar1String ty2 bs
       | otherwise = bs -- ignore concrete types
-    unify tyvars ty1@(ABS.TSimple _) ty2 bs = bs --ignore concrete types
-    unify tyvars ty1@(ABS.TPoly qu ts) ABS.TInfer bs = bs
-    unify tyvars t1@(ABS.TPoly _ _) t2@(ABS.TSimple _) _ = error $ "cannot unify " ++ show t1 ++ " to " ++  show t2
-    unify tyvars ty1@(ABS.TPoly qu1 ts1) ty2@(ABS.TPoly qu2 ts2) bs =
-      -- assume qu1 == qu2, haskell will check that anyway
-      foldl (flip ($)) bs $ zipWith (unify tyvars) ts1 ts2
- 
+    unify (ABS.TSimple _) _ bs = bs --ignore concrete types
+    unify (ABS.TPoly _ _) ABS.TInfer bs = bs
+    unify (ABS.TPoly _qu1 ts1) (ABS.TPoly _qu2 ts2) bs =
+      -- assume _qu1 == _qu2, haskell will check that anyway
+      foldl (flip ($)) bs $ zipWith unify ts1 ts2
+    unify t1@(ABS.TPoly _ _) t2@(ABS.TSimple _) _ = error $ "cannot unify " ++ show t1 ++ " to " ++  show t2
+    unify ABS.TInfer _ _ = todo -- unification over type inference can only work for ADTS, interface types
 
     mostGeneral :: (?st :: SymbolTable) => ABS.T -> ABS.T -> ABS.T
     mostGeneral ABS.TInfer ty2 = ty2
@@ -88,7 +92,7 @@ unifyMany tyvars args1 args2 = foldl (flip ($)) (M.fromList $ map (\ (ABS.U (_,t
                                                                                  then ty1
                                                                                  else error "not unifiable interfaces"
           _ -> ty1 -- error
-    mostGeneral ty1@(ABS.TPoly c ts1)  ty2@(ABS.TPoly _ ts2)= ABS.TPoly c (zipWith mostGeneral ts1 ts2) 
+    mostGeneral (ABS.TPoly c ts1)  (ABS.TPoly _ ts2)= ABS.TPoly c (zipWith mostGeneral ts1 ts2) 
     mostGeneral _ _ = error "no mostGeneral"
 
 
@@ -109,12 +113,12 @@ buildInfo _ t@(ABS.TSimple _) = if isInterface t
                                 then Just Up
                                 else Nothing
 
-buildInfo _ (ABS.TPoly (ABS.U_ (ABS.U (_,"Fut"))) _) = Nothing -- TODO: Fut<A> should be covariant, but for implementation reasons (MVar a) it is invariant
+buildInfo (ABS.TPoly (ABS.U_ (ABS.U (_,"Fut"))) _) (ABS.TPoly (ABS.U_ (ABS.U (_,"Fut"))) _) = Nothing -- TODO: Fut<A> should be covariant, but for implementation reasons (MVar a) it is invariant
 buildInfo (ABS.TPoly _ ts1) (ABS.TPoly qu ts2) = let (l, buildArgs) = foldl (\ (i,acc) (t1,t2) -> maybe (i+1,acc) (\x -> (i+1,(i,x):acc)) (buildInfo t1 t2) ) (0,[]) (zip ts1 ts2)
                               in if null buildArgs
                                  then Nothing
                                  else Just $ Deep (showQU qu) l buildArgs
-
+buildInfo _ _ = total
 
 isInterface :: (?st::SymbolTable) => ABS.T -> Bool
 isInterface ABS.TInfer = False
