@@ -79,7 +79,7 @@ tAss _ tprincipal (ABS.L (_,n)) (ABS.ExpP pexp) = do
 tAss as (ABS.TSimple qu) (ABS.L (_,n)) (ABS.ExpE (ABS.New qcname args)) = case find (\case
                       ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                       _ -> False) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,_)))) pExp)) -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends (pExp:args)
   let (q, cname) = splitQU qcname
@@ -445,7 +445,7 @@ tDecAss _ tprincipal _ (ABS.ExpP pexp) = do
 tDecAss as (ABS.TSimple qu) _ (ABS.ExpE (ABS.New qcname args)) = case find (\case
                       ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                       _ -> False) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,_)))) pExp)) -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends (pExp:args)
   let (q, cname) = splitQU qcname
@@ -817,7 +817,7 @@ tFieldAss _ tprincipal (ABS.L (_,field)) (ABS.ExpP pexp) = do
 tFieldAss as _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.New qcname args)) = case find (\case
                       ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                       _ -> False) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,_)))) pExp)) -> do
   (formalParams, localVars) <- getFormalLocal
   (_,_,onlyPureDeps) <- depends (pExp:args)
   let (q, cname) = splitQU qcname
@@ -1143,7 +1143,7 @@ tStm (ABS.AnnStm as stmt)
                  in maybeThisLifted fields [hs|(\ (DeploymentComponent obj') -> awaitSugar'' this obj' ($mapplied)) thisDC|]
             else let mapplied = HS.InfixApp [hs|I'.pure request'|] (HS.QVarOp $ HS.UnQual $ HS.Symbol "<*>") $ fst $ runReader (let ?vars = localVars in tStmExp costSumExp) formalParams                     
                  in [hs|(\ (DeploymentComponent obj') -> awaitSugar'' this obj' =<< I'.lift $(maybeThis fields mapplied)) thisDC|]
-      tstmt <- tStm $ ABS.AnnStm (filter (\case ABS.Ann(ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"Cost")))) pexp) -> False; _ -> True) as)
+      tstmt <- tStm $ ABS.AnnStm (filter (\case ABS.Ann(ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"Cost")))) _) -> False; _ -> True) as)
                       stmt
       return (trequest:tstmt)
 
@@ -1581,7 +1581,7 @@ tEffExp :: ( ?absFileName:: String
 tEffExp as (ABS.New qcname args) _ = case find (\case
                       ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"DC")))) _) -> True
                       _ -> False) as of
- Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) pExp)) -> do
+ Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,_)))) pExp)) -> do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends (pExp:args)
   let (q, cname) = splitQU qcname
