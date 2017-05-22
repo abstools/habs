@@ -48,14 +48,14 @@ tMethod body formalParams fields cname cAloneMethods isInit declaredRes =
   tReturn :: (?fields::ScopeLVL, ?cname::String, ?cAloneMethods::[String], ?isInit::Bool) 
           => [ABS.Ann] -> ABS.Exp -> BlockScope [HS.Stmt]
   tReturn a (ABS.ExpE eexp) = pure . HS.Qualifier <$> tEffExp a eexp False -- keep the result, TODO: mUpOne according to the return type of tEffExp
-  tReturn a (ABS.ExpP pexp) = do
-    (formalParams, localVars) <- getFormalLocal
-    (_, fields,onlyPureDeps) <- depends [pexp]
-    pure [HS.Qualifier $ maybeLift $ maybeThis fields $        -- keep the result
+  tReturn _ (ABS.ExpP pexp) = do
+    (formalParams_, localVars) <- getFormalLocal
+    (_, dfields,onlyPureDeps) <- depends [pexp]
+    pure [HS.Qualifier $ maybeLift $ maybeThis dfields $        -- keep the result
       if onlyPureDeps
-      then let (texp, tactual) = runReader (tPureExp pexp) formalParams
+      then let (texp, tactual) = runReader (tPureExp pexp) formalParams_
            in [hs|I'.pure $(F.mUpOne declaredRes tactual texp)|]
-      else let (texp,tactual) = runReader (let ?vars = localVars in tStmExp pexp) formalParams
+      else let (texp,tactual) = runReader (let ?vars = localVars in tStmExp pexp) formalParams_
            in S.mUpOne declaredRes tactual texp]
 
 ---------------- LOCAL VARIABLE ASSIGNMENT
@@ -128,7 +128,7 @@ tAss _ ABS.TInfer (ABS.L (p, _)) (ABS.ExpE (ABS.NewLocal _ _)) = errorPos p "Can
 
 tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) ->
+    Just (SV (Function _ declaredArgs _declaredRes) _) ->
       case pexp of
          ABS.EVar ident@(ABS.L (_,calleeVar)) -> do
           (formalParams, localVars) <- getFormalLocal
@@ -187,9 +187,9 @@ tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) ar
          _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
     _ -> errorPos p "cannot find such method name"
 
-tAss _ _ (ABS.L (_,n)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) args)) = 
+tAss _ _ (ABS.L (_,n)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (p,mname)) args)) = 
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) -> do
+    Just (SV (Function _ declaredArgs _declaredRes) _) -> do
       (formalParams, localVars) <- getFormalLocal
       (_,fields,onlyPureDeps) <- depends args
       pure $
@@ -205,10 +205,11 @@ tAss _ _ (ABS.L (_,n)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (_,mname)) args)) 
                                                 [hs|I'.pure $(maybeMangleCall mname)|]
                                                 es'
              in [hs|(I'.lift . I'.writeIORef $(HS.Var $ HS.UnQual $ HS.Ident n)) =<< ((this <..>) =<< I'.lift $(maybeThis fields mapplied))|]
+    _ -> errorPos p "cannot find such method name"
 
 tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) -> 
+    Just (SV (Function _ declaredArgs _declaredRes) _) -> 
        case pexp of
         ABS.ELit ABS.LThis -> do
           (formalParams, localVars) <- getFormalLocal
@@ -285,7 +286,7 @@ tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) a
 
 tAss a typ i@(ABS.L (_,n)) (ABS.ExpE (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args)) =
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) ->
+    Just (SV (Function _ declaredArgs _declaredRes) _) ->
        case pexp of
         ABS.ELit ABS.LThis -> do
           (formalParams, localVars) <- getFormalLocal
@@ -477,7 +478,7 @@ tDecAss _ ABS.TInfer (ABS.L (p, _)) (ABS.ExpE (ABS.NewLocal _ _)) = errorPos p "
 
 tDecAss a t i (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) ->
+    Just (SV (Function _ declaredArgs _declaredRes) _) ->
         case pexp of
          ABS.EVar ident@(ABS.L (_, calleeVar)) -> do
           typ <- M.lookup ident . M.unions <$> get -- check type in the scopes
@@ -537,7 +538,7 @@ tDecAss a t i (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
 
 tDecAss _ _ _ (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (p,mname)) args)) = 
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) -> do
+    Just (SV (Function _ declaredArgs _declaredRes) _) -> do
         (formalParams, localVars) <- getFormalLocal
         (_,fields,onlyPureDeps) <- depends args
         pure $
@@ -557,7 +558,7 @@ tDecAss _ _ _ (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (p,mname)) args)) =
 
 tDecAss a t i (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) ->
+    Just (SV (Function _ declaredArgs _declaredRes) _) ->
        case pexp of
         ABS.ELit ABS.LThis -> do
           (formalParams, localVars) <- getFormalLocal
@@ -689,7 +690,7 @@ tFieldAss :: (?absFileName::String, ?cAloneMethods::[String], ?cname::String, ?f
           -> BlockScope HS.Exp
 tFieldAss a _ (ABS.L (_, field)) (ABS.ExpE (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args)) = 
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) ->
+    Just (SV (Function _ declaredArgs _declaredRes) _) ->
        case pexp of
         ABS.ELit ABS.LThis -> do
           (formalParams, localVars) <- getFormalLocal
@@ -832,7 +833,7 @@ tFieldAss _ _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.NewLocal qcname args)) = do
 
 tFieldAss a _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mname)) args)) =
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) ->
+    Just (SV (Function _ declaredArgs _declaredRes) _) ->
         case pexp of
          ABS.EVar ident@(ABS.L (_,calleeVar)) -> do
           (formalParams, localVars) <- getFormalLocal
@@ -903,7 +904,7 @@ tFieldAss a _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.SyncMethCall pexp (ABS.L (p,mna
 
 tFieldAss _ _ (ABS.L (_,field)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (p,mname)) args)) = 
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) -> do
+    Just (SV (Function _ declaredArgs _declaredRes) _) -> do
         (formalParams, localVars) <- getFormalLocal
         (_,_,onlyPureDeps) <- depends args
         pure $
@@ -922,7 +923,7 @@ tFieldAss _ _ (ABS.L (_,field)) (ABS.ExpE (ABS.ThisSyncMethCall (ABS.L (p,mname)
 
 tFieldAss a _ i@(ABS.L (_,field)) (ABS.ExpE (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args)) =
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) ->
+    Just (SV (Function _ declaredArgs _declaredRes) _) ->
        case pexp of
         ABS.ELit ABS.LThis -> do
           (formalParams, localVars) <- getFormalLocal
@@ -1088,7 +1089,7 @@ tStm (ABS.AnnStm as (ABS.SDecAss t i@(ABS.L (p,n)) e)) = do
                 ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,"HTTPName")))) _) -> True
                 _ -> False
                ) as of
-      Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (p,_)))) (ABS.ELit (ABS.LStr str)))) -> 
+      Just (ABS.Ann (ABS.AnnWithType (ABS.TSimple (ABS.U_ (ABS.U (_,_)))) (ABS.ELit (ABS.LStr str)))) -> 
           [HS.Qualifier [hs|I'.lift ((\ v' -> I'.atomicModifyIORef' apiStore' (\ m' -> (I'.insert $(HS.Lit $ HS.String str) (I'.toDyn v') m',()) )) =<< I'.readIORef $(HS.Var $ HS.UnQual $ HS.Ident n))|]]
       _ -> []) 
 
@@ -1103,7 +1104,7 @@ tStm (ABS.AnnStm a (ABS.SAss i@(ABS.L (p,n)) e)) = do
                else errorPos p $ n ++ " not in scope"
 
 -- DISPATCHER: FIELD_ASSIGNMENT
-tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.L (_,f)) e)) = 
+tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.L (p,f)) e)) = 
   case M.lookup i ?fields of
     Just t -> do
       fieldUpdated <- tFieldAss a t i e
@@ -1113,6 +1114,7 @@ tStm (ABS.AnnStm a (ABS.SFieldAss i@(ABS.L (_,f)) e)) =
         [ HS.Qualifier fieldUpdated
         , HS.Qualifier [hs|I'.lift ((\ this'' -> I'.mapM_ (`I'.throwTo` ChangedFuture' ($(fieldFun i) this'')) ($fieldFun'' this'')) =<< I'.readIORef this')|]] 
        _ -> [HS.Qualifier fieldUpdated]
+    _ -> errorPos p $ "no such field" ++ f
 
 ------------------------- RETURN , STANDALONE EXPRESSION
 
@@ -1548,7 +1550,7 @@ tEffExp _ (ABS.NewLocal qcname args) _ = do
 
 tEffExp a (ABS.SyncMethCall pexp (ABS.L (p,mname)) args) _isAlone = 
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) -> 
+    Just (SV (Function _ declaredArgs _declaredRes) _) -> 
       case pexp of
         ABS.EVar ident@(ABS.L (_,calleeVar)) -> do
           (formalParams, localVars) <- getFormalLocal
@@ -1607,15 +1609,13 @@ tEffExp a (ABS.SyncMethCall pexp (ABS.L (p,mname)) args) _isAlone =
         ABS.ELit ABS.LNull -> errorPos p "null cannot be the object callee"
         _ -> errorPos p "current compiler limitation: the object callee cannot be an arbitrary pure-exp"
     _ -> errorPos p "cannot find such method name"
-    _ -> errorPos p "cannot find such method name"
-
 
 
 tEffExp _ (ABS.ThisSyncMethCall (ABS.L (p,mname)) args) _ = do
   (formalParams, localVars) <- getFormalLocal
   (_,fields,onlyPureDeps) <- depends args
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) -> 
+    Just (SV (Function _ declaredArgs _declaredRes) _) -> 
       pure $ 
         if onlyPureDeps
         then let (es,ts) = unzip $ runReader (mapM tPureExp args) formalParams
@@ -1632,7 +1632,7 @@ tEffExp _ (ABS.ThisSyncMethCall (ABS.L (p,mname)) args) _ = do
 
 tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone = 
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) -> 
+    Just (SV (Function _ declaredArgs _declaredRes) _) -> 
       case pexp of
         ABS.ELit ABS.LThis -> do
           (formalParams, localVars) <- getFormalLocal
@@ -1721,7 +1721,7 @@ tEffExp a (ABS.AsyncMethCall pexp (ABS.L (p,mname)) args) isAlone =
 
 tEffExp a (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args) True = 
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) -> 
+    Just (SV (Function _ declaredArgs _declaredRes) _) -> 
       case pexp of
         ABS.ELit ABS.LThis -> do
                 (formalParams, localVars) <- getFormalLocal
@@ -1798,7 +1798,7 @@ tEffExp a (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args) True =
 
 tEffExp a (ABS.AwaitMethCall pexp (ABS.L (p,mname)) args) False = 
   case M.lookup (SN mname Nothing) ?st of
-    Just (SV (Function _ declaredArgs declaredRes) _) -> 
+    Just (SV (Function _ declaredArgs _declaredRes) _) -> 
       case pexp of
         ABS.ELit ABS.LThis -> do
                 (formalParams, localVars) <- getFormalLocal

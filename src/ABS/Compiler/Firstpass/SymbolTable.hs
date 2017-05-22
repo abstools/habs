@@ -66,8 +66,8 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
            (prefix,iden) = splitQA qa
            mk = find (\ (SN sname mImported) -> sname == iden && case mImported of
                                                                    Just (smodule,_) -> smodule == prefix   
-                                                                   Nothing -> True
-                                                                   _ -> False) (M.keys acc') -- todo
+                                                                   Nothing -> True -- todo: or false?
+                                                                   ) (M.keys acc') 
                                              in maybe (error "symbol not in scope") (\ k -> M.adjust (\ (SV v _) -> SV v True) k acc') mk) acc qas
         AnyFromExport qas from -> foldl 
                                   (\ acc' qa -> M.insertWith (\ _ (SV v _) -> SV v True) 
@@ -153,7 +153,7 @@ globalSTs ms = foldl (\ acc m@(Module qu es is ds _) ->
             f' d tyvars (SinglConstrIdent u) = f' d tyvars (ParamConstrIdent u [])
 
             -- data constructors
-            f' d@(U (_,dname)) tyvars (ParamConstrIdent i@(U (_,cname)) args) = \ acc -> 
+            f' d@(U (_,dname)) tyvars (ParamConstrIdent (U (_,cname)) args) = \ acc -> 
               -- this fold is for maybe adding any record field as a function
               foldr (\case
                         RecordConstrType t (L (_,s)) -> 

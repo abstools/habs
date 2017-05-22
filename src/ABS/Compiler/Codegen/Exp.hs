@@ -15,8 +15,7 @@ import qualified ABS.AST as ABS
 import qualified Language.Haskell.Exts.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
 import qualified Data.Map as M (fromList, insert, lookup, union, assocs, lookup, findWithDefault)
-import Language.Haskell.Exts.QQ (hs, ty)
-import Data.Foldable (foldlM)
+import Language.Haskell.Exts.QQ (hs)
 import Data.List (find)
 
 -- | Translating the body of a pure function
@@ -24,7 +23,7 @@ tFunBody :: (?st::SymbolTable, ?fields::ScopeLVL, ?cname::String)
          => ABS.FunBody -> [ABS.U] -> [ABS.FormalPar] -> ABS.T -> HS.Exp
 tFunBody ABS.BuiltinFunBody _ _params _ = [hs|I'.error "builtin called"|] -- builtin becomes error
 tFunBody (ABS.NormalFunBody pexp) tyvars params declaredRes = 
-   let (e,t) = runReader (tPureExp pexp) (M.fromList $ map (\ (ABS.FormalPar t i) -> (i,t)) params) -- initial function scope is the formal params
+   let (e,t) = runReader (tPureExp pexp) (M.fromList $ map (\ (ABS.FormalPar t_ i_) -> (i_,t_)) params) -- initial function scope is the formal params
        bs = unifyMany tyvars [declaredRes] [t]
        instantRes = instantiateOne bs declaredRes
    in mUpOne instantRes t e
@@ -265,7 +264,7 @@ tPureExp (ABS.EParamConstr qu args) = do
                           (HS.Var $ HS.UnQual $ HS.Ident constrName)
                           es', instantRes)          
     -- this is needed because `transformFieldBody` translates the smart class constructor to a Param class
-    Just (SV (Class _ declaredClassArgs) _) -> 
+    Just (SV (Class _ _declaredClassArgs) _) -> 
       -- let 
       --     -- only up the class args, the "local" field args will be up'ed by Let
       --     (ces,les) = splitAt (length declaredClassArgs) es
@@ -290,18 +289,18 @@ tPureExp (ABS.EParamConstr qu args) = do
   --                                 Just (SV Exception _) -> HS.Paren . HS.App [hs|I'.toException|]
   --                                 _ -> id
     
-tPureExp (ABS.EVar var@(ABS.L (p,pid))) = do
+tPureExp (ABS.EVar var@(ABS.L (_p,pid))) = do
      scope <- ask
      pure $ case M.lookup var scope of
               Just t -> (HS.Var $ HS.UnQual $ HS.Ident pid, t)
               Nothing ->  case M.lookup var ?fields of
                            Just t -> if null ?cname
-                                    then (HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'this", t) -- errorPos p "cannot access fields inside main block or pure functions"
+                                    then (HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'this", t) -- errorPos _p "cannot access fields inside main block or pure functions"
                                     else let fieldFun = HS.Var $ HS.UnQual $ HS.Ident $ pid ++ "'" ++ ?cname -- accessor
                                          in ([hs|($fieldFun this'')|], t) -- accessor
                            Nothing -> case find (\ (SN ident' modul,_) -> pid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
                                        Just (_,SV Foreign _) -> (HS.Var $ HS.UnQual $ HS.Ident pid, ABS.TInfer)
-                                       _ ->  (HS.Var $ HS.UnQual $ HS.Ident pid, ABS.TInfer) -- errorPos p $ pid ++ " not in scope" -- 
+                                       _ ->  (HS.Var $ HS.UnQual $ HS.Ident pid, ABS.TInfer) -- errorPos _p $ pid ++ " not in scope" -- 
 
 
 tPureExp (ABS.EField var@(ABS.L (p, field))) = case M.lookup var ?fields of
@@ -326,7 +325,7 @@ tPureExp (ABS.ELit lit) = pure $ case lit of
    ABS.LNull -> ([hs|(up' null)|], ABS.TInfer)
 
 mUpOne :: (?st :: SymbolTable) => ABS.T -> ABS.T -> HS.Exp -> HS.Exp
-mUpOne unified actual exp = maybe exp (\ info -> HS.ExpTypeSig noLoc'(HS.App (buildUp info) exp) (tType unified)) (buildInfo unified actual)
+mUpOne unified actual e = maybe e (\ info -> HS.ExpTypeSig noLoc'(HS.App (buildUp info) e) (tType unified)) (buildInfo unified actual)
 
 mUpMany :: (?st :: SymbolTable) => [ABS.T] -> [ABS.T] -> [HS.Exp] -> [HS.Exp]
 mUpMany = zipWith3 mUpOne
