@@ -312,17 +312,18 @@ tPureExp (ABS.EField var@(ABS.L (p, field))) = case M.lookup var ?fields of
                                                   Nothing -> errorPos p "no such field"
   
 tPureExp (ABS.ELit lit) = pure $ case lit of
-                                   ABS.LStr str -> (HS.Lit $ HS.String str, ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"String"))
-                                   ABS.LInt i -> (HS.Lit $ HS.Int i, ABS.TInfer)
-                                   --(HS.ExpTypeSig noLoc' (HS.Lit $ HS.Int i) [ty|Int|], ABS.TSimple $ ABS.U_ $ ABS.U $ ((0,0),"Int"))
-                                   ABS.LFloat f -> (HS.Lit $ HS.Frac $ toRational f, ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Rat"))
-                                   ABS.LThis -> if null ?cname
-                                                then error "cannot access this keyword inside main block or pure code"
-                                                else ([hs|(up' this)|],ABS.TInfer)
-                                                  -- case find (\ (SN ident' modul,_) -> ?cname == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
-                                                  --     Just (_,SV (Class is) _) -> ([hs|(up' this)|], is) -- Class has a polymorphic type of all directly-implemented interfaces
-                                                      -- _ -> error "dev error: cannot find such class"
-                                   ABS.LNull -> ([hs|(up' null)|], ABS.TInfer)
+   ABS.LStr str -> (HS.ExpTypeSig noLoc' (HS.Lit $ HS.String str) (HS.TyCon (HS.UnQual $ HS.Ident "String")) -- type for OverloadedStrings disambiguate
+                   , ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"String"))
+   ABS.LInt i -> (HS.Lit $ HS.Int i, ABS.TInfer)
+   --(HS.ExpTypeSig noLoc' (HS.Lit $ HS.Int i) [ty|Int|], ABS.TSimple $ ABS.U_ $ ABS.U $ ((0,0),"Int"))
+   ABS.LFloat f -> (HS.Lit $ HS.Frac $ toRational f, ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Rat"))
+   ABS.LThis -> if null ?cname
+                then error "cannot access this keyword inside main block or pure code"
+                else ([hs|(up' this)|],ABS.TInfer)
+                  -- case find (\ (SN ident' modul,_) -> ?cname == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
+                  --     Just (_,SV (Class is) _) -> ([hs|(up' this)|], is) -- Class has a polymorphic type of all directly-implemented interfaces
+                      -- _ -> error "dev error: cannot find such class"
+   ABS.LNull -> ([hs|(up' null)|], ABS.TInfer)
 
 mUpOne :: (?st :: SymbolTable) => ABS.T -> ABS.T -> HS.Exp -> HS.Exp
 mUpOne unified actual exp = maybe exp (\ info -> HS.ExpTypeSig noLoc'(HS.App (buildUp info) exp) (tType unified)) (buildInfo unified actual)
