@@ -32,8 +32,7 @@ tStmExp (ABS.EIf predE thenE elseE) = do
   (ep,_) <- tStmExp predE
   (e1,t1) <- tStmExp thenE
   (e2,t2) <- tStmExp elseE
-  let freshTyVar = ABS.U ((0,0),"A'")
-      declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
+  let declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
       bs = unifyMany [freshTyVar] declaredArgs [t1,t2]
       instantArgs = instantiateMany bs declaredArgs
       instantRes = instantiateOne bs $ ABS.TSimple (ABS.U_ freshTyVar)
@@ -53,8 +52,7 @@ tStmExp (ABS.ELet (ABS.FormalPar ptyp pid@(ABS.L (_,var))) eqE inE) = do
 tStmExp (ABS.ECase ofE branches) = do
   (tof,_) <- tStmExp ofE
   (es,ts) <- unzip <$> mapM (\case (ABS.ECaseBranch _ pexp) -> tStmExp pexp) branches
-  let freshTyVar = ABS.U ((0,0),"A'")
-      declaredRes = replicate (length branches) (ABS.TSimple (ABS.U_ freshTyVar))
+  let declaredRes = replicate (length branches) (ABS.TSimple (ABS.U_ freshTyVar))
       bs = unifyMany [freshTyVar] declaredRes ts
       instantRes = instantiateMany bs declaredRes
       es' = mUpMany instantRes ts es
@@ -125,9 +123,8 @@ tStmExp (ABS.EEq pvar@(ABS.EField _) pnull@(ABS.ELit ABS.LNull)) = tStmExp (ABS.
 -- a catch-all for literals,constructors maybe coupled with vars
 tStmExp (ABS.EEq l r) = do
   (e1,t1) <- tStmExp l
-  (e2,t2) <- tStmExp r;
-  let freshTyVar = ABS.U ((0,0),"A'")
-      declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
+  (e2,t2) <- tStmExp r
+  let declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
       instantArgs = instantiateMany (unifyMany [freshTyVar] declaredArgs [t1,t2]) declaredArgs
       [ue1,ue2] = mUpMany instantArgs [t1,t2] [e1,e2]
   pure ([hs|((==) <$!> $ue1 <*> $ue2)|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Bool"))
@@ -142,40 +139,35 @@ tStmExp (ABS.EAnd l r)  = do (tl,_) <- tStmExp l;  (tr,_) <- tStmExp r; pure ([h
 tStmExp (ABS.ELt l r)   = do
   (e1,t1) <- tStmExp l
   (e2,t2) <- tStmExp r
-  let freshTyVar = ABS.U ((0,0),"A'")
-      declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
+  let declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
       instantArgs = instantiateMany (unifyMany [freshTyVar] declaredArgs [t1,t2]) declaredArgs
       [ue1,ue2] = mUpMany instantArgs [t1,t2] [e1,e2]
   pure ([hs|((<) <$!> $ue1 <*> $ue2)|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Bool"))
 tStmExp (ABS.ELe l r)   = do
   (e1,t1) <- tStmExp l
   (e2,t2) <- tStmExp r
-  let freshTyVar = ABS.U ((0,0),"A'")
-      declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
+  let declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
       instantArgs = instantiateMany (unifyMany [freshTyVar] declaredArgs [t1,t2]) declaredArgs
       [ue1,ue2] = mUpMany instantArgs [t1,t2] [e1,e2]
   pure ([hs|((<=) <$!> $ue1 <*> $ue2)|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Bool"))
 tStmExp (ABS.EGt l r)   = do
   (e1,t1) <- tStmExp l
   (e2,t2) <- tStmExp r
-  let freshTyVar = ABS.U ((0,0),"A'")
-      declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
+  let declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
       instantArgs = instantiateMany (unifyMany [freshTyVar] declaredArgs [t1,t2]) declaredArgs
       [ue1,ue2] = mUpMany instantArgs [t1,t2] [e1,e2]
   pure ([hs|((>) <$!> $ue1 <*> $ue2)|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Bool"))
 tStmExp (ABS.EGe l r)   = do
   (e1,t1) <- tStmExp l
   (e2,t2) <- tStmExp r
-  let freshTyVar = ABS.U ((0,0),"A'")
-      declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
+  let declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
       instantArgs = instantiateMany (unifyMany [freshTyVar] declaredArgs [t1,t2]) declaredArgs
       [ue1,ue2] = mUpMany instantArgs [t1,t2] [e1,e2]
   pure ([hs|((>=) <$!> $ue1 <*> $ue2)|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Bool"))
 tStmExp (ABS.EAdd l r)  = do 
   (e1,t1) <- tStmExp l
   (e2,t2) <- tStmExp r
-  let freshTyVar = ABS.U ((0,0),"A'")
-      declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
+  let declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
       bs = unifyMany [freshTyVar] declaredArgs [t1,t2]
       instantArgs = instantiateMany bs declaredArgs
       instantRes = instantiateOne bs $ ABS.TSimple (ABS.U_ freshTyVar)
@@ -184,8 +176,7 @@ tStmExp (ABS.EAdd l r)  = do
 tStmExp (ABS.ESub l r)  = do 
   (e1,t1) <- tStmExp l
   (e2,t2) <- tStmExp r
-  let freshTyVar = ABS.U ((0,0),"A'")
-      declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
+  let declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
       bs = unifyMany [freshTyVar] declaredArgs [t1,t2]
       instantArgs = instantiateMany bs declaredArgs
       instantRes = instantiateOne bs $ ABS.TSimple (ABS.U_ freshTyVar)
@@ -194,8 +185,7 @@ tStmExp (ABS.ESub l r)  = do
 tStmExp (ABS.EMul l r)  = do 
   (e1,t1) <- tStmExp l
   (e2,t2) <- tStmExp r
-  let freshTyVar = ABS.U ((0,0),"A'")
-      declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
+  let declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TSimple (ABS.U_ freshTyVar)]
       bs = unifyMany [freshTyVar] declaredArgs [t1,t2]
       instantArgs = instantiateMany bs declaredArgs
       instantRes = instantiateOne bs $ ABS.TSimple (ABS.U_ freshTyVar)
@@ -248,8 +238,7 @@ tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (p,"Pair"))) pexps) =
 tStmExp (ABS.EParamConstr (ABS.U_ (ABS.U (_,"Cons"))) [l, r]) = do
    (e1,t1) <- tStmExp l
    (e2,t2) <- tStmExp r
-   let freshTyVar = ABS.U ((0,0),"A'");
-       declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TPoly (ABS.U_ (ABS.U ((0,0),"List"))) [ABS.TSimple (ABS.U_ freshTyVar)]]
+   let declaredArgs = [ABS.TSimple (ABS.U_ freshTyVar), ABS.TPoly (ABS.U_ (ABS.U ((0,0),"List"))) [ABS.TSimple (ABS.U_ freshTyVar)]]
        bs = unifyMany [freshTyVar] declaredArgs [t1,t2]
        instantArgs = instantiateMany bs declaredArgs
        instantRes = instantiateOne bs $ ABS.TPoly (ABS.U_ (ABS.U ((0,0),"List"))) [ABS.TSimple (ABS.U_ freshTyVar)]
