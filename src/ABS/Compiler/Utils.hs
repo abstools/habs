@@ -11,6 +11,7 @@ module ABS.Compiler.Utils
     , headToLower
     , errorPos, warnPos, showPos
     , noLoc', mkLoc, mkLocFromQU, mkLocFromQA
+    , freshTyVar
     ) where
 
 import qualified ABS.AST as ABS
@@ -89,3 +90,6 @@ mkLocFromQA qa = SrcLoc ?absFileName (lineQA qa) 1
 -- | from BNFC tokens' position
 mkLoc :: (?absFileName::String) => (Int,Int) -> SrcLoc
 mkLoc (line,column) = SrcLoc ?absFileName line column
+
+freshTyVar :: ABS.U
+freshTyVar = ABS.U ((0,0),"A'")
