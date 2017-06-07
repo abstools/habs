@@ -77,7 +77,6 @@ cabal exec ghc -- gen/haskell/*.hs --make -main-is Module1
 The backend has been split into multiple subrepositories (git submodules):
 
 - [habs-parser](https://github.com/abstools/habs-parser): Contains the grammar & parser to parse ABS files.
-- [habs-runtime](https://github.com/abstools/habs-runtime): A library to implement the concurrency features of the ABS language inside Haskell.
-- [habs-stdlib](https://github.com/abstools/habs-stdlib): The ABS standard library expressed in Haskell.
+- [habs-runtime](https://github.com/abstools/habs-runtime): A library to implement the concurrency features of the ABS language inside Haskell. Also contains the ABS standard library expressed directly in Haskell.
 - [habs](https://github.com/abstools/habs) (This repository): Contains the code-generator of ABS to Haskell.
 - [habs-samples](https://github.com/abstools/habs-samples): Contains an ABS test suite and other sample ABS files.
