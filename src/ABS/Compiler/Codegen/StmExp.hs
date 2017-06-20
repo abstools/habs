@@ -229,8 +229,6 @@ tStmExp (ABS.ELit lit) = pure $ case lit of
                                                then error "cannot access this keyword inside main block"
                                                else [hs|I'.pure (up' this)|]
                                    ABS.LNull -> [hs|I'.pure (up' null)|]
-                                   ABS.LThisDC -> [hs|I'.pure thisDC|]
-
 
 
 -- UPCASTING
