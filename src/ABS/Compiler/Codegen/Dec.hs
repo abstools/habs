@@ -414,7 +414,15 @@ tDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (mkLoc ipos)
                       (HS.Var $ HS.UnQual $ HS.Ident mStr) (pNames ++ [HS.Ident "this"])
       in HS.FunBind [HS.Match noLoc' (HS.Ident $ mStr ++ "Remote'") 
           [HS.PTuple HS.Boxed $ map HS.PVar pNames
-                                ++ [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PVar $ HS.Ident "this"]]]
+                                ++ [HS.PApp (HS.UnQual $ HS.Ident tname) 
+                                    [HS.PAsPat (HS.Ident "this") $ HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PWildCard,HS.PVar $ HS.Ident "thisCog'",HS.PWildCard]], HS.PVar $ HS.Ident "mfpid'"]]
           Nothing
-          (HS.UnGuardedRhs mApplied)
+          (HS.UnGuardedRhs $ [hs|do
+                                  $mApplied
+                                  case mfpid' of
+                                    Just fpid' -> I'.lift . I'.send fpid' =<< m y this
+                                    _ -> I'.pure ()
+                                  back' thisCog'
+                             |]
+            )
           Nothing ] ) ms

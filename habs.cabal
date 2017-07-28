@@ -47,6 +47,7 @@ executable habs
     filepath,
     directory,
     cmdargs,
+    distributed-process ==0.6.6.1,
     -- for not having to further issue the installation of ABS-runtime dependencies
     habs-runtime,
     habs-stdlib
