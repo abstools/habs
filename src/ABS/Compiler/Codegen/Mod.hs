@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, QuasiQuotes, LambdaCase #-}
+{-# LANGUAGE ImplicitParams, QuasiQuotes, LambdaCase, PatternSynonyms #-}
 module ABS.Compiler.Codegen.Mod 
     ( tModul
     ) where
@@ -10,7 +10,7 @@ import ABS.Compiler.Codegen.Stm (tMethod)
 import ABS.Compiler.CmdOpt
 
 import qualified ABS.AST as ABS
-import qualified Language.Haskell.Exts.Syntax as HS
+import qualified Language.Haskell.Exts.Simple.Syntax as HS
 import Language.Haskell.Exts.QQ (hs, dec)
 
 import qualified Data.Map as M (Map, lookup, keys, empty, foldlWithKey, member, toAscList)
@@ -22,11 +22,17 @@ tModul :: (?absFileName::String)
        => ABS.Module 
        -> M.Map ModuleName SymbolTable 
        -> HS.Module
-tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables = HS.Module
-  (mkLocFromQU thisModuleQU) -- adds {-# LINE #-} pragma 
-  (HS.ModuleName thisModuleName)
+tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables = HS.Module 
+  (Just $ HS.ModuleHead 
+    (HS.ModuleName thisModuleName)
+    Nothing
+    -- TRANSLATED EXPORTS OF THE ABS-PROGRAM
+    (Just $ HS.ExportSpecList $ (case maybeMain of
+                   ABS.JustBlock _ -> ((HS.EVar $ HS.UnQual $ HS.Ident "main") :) -- adds main to the export list
+                   ABS.NoBlock -> id) $ concatMap tExport exports)
+  )
   -- MODULE PRAGMAS
-  [ HS.LanguagePragma noLoc' [ HS.Ident "NoImplicitPrelude" -- for not importing haskell's prelude
+  [ HS.LanguagePragma [ HS.Ident "NoImplicitPrelude" -- for not importing haskell's prelude
                              , HS.Ident "ExistentialQuantification" -- for heterogeneous collections
                              , HS.Ident "MultiParamTypeClasses" -- for subtyping
                              , HS.Ident "ScopedTypeVariables" -- in ABS typevars are scoped(over the whole function),in Haskell not by default
@@ -40,13 +46,8 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
     -- -fwarn-missing-methods:  for making error the missing ABS class methods
     -- -fno-ignore-asserts:  for not ignoring asserts (which is the default in Haskell)
     -- all other warnings are ignored
-  , HS.OptionsPragma noLoc' (Just HS.GHC) "-w -Werror -fforce-recomp -fwarn-missing-methods -fno-ignore-asserts"
-  ] Nothing
-  -- TRANSLATED EXPORTS OF THE ABS-PROGRAM
-  (Just $ (case maybeMain of
-                  ABS.JustBlock _ -> ((HS.EVar $ HS.UnQual $ HS.Ident "main") :) -- adds main to the export list
-                  ABS.NoBlock -> id) $ concatMap tExport exports)
-
+  , HS.OptionsPragma (Just HS.GHC) "-w -Werror -fforce-recomp -fwarn-missing-methods -fno-ignore-asserts"
+  ]
   -- fixed IMPORTS HEADER 
   ((if nostdlib cmdOpt
     then id
@@ -54,115 +55,115 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
       (HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.StdLib"
                      , HS.importQualified = False
                      , HS.importAs = Nothing
-                     , HS.importLoc = noLoc', HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
+                     , HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
                      } :)) 
   ([ HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.Runtime"
                    , HS.importQualified = False
                    , HS.importAs = Nothing
-                   , HS.importLoc = noLoc', HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
+                   , HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
                    } 
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Function" 
                   , HS.importQualified = False
                   , HS.importAs = Nothing
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Symbol "."])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Symbol "."]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Applicative" 
                   , HS.importQualified = False
                   , HS.importAs = Nothing
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Symbol "<*>", HS.IVar $ HS.Symbol "*>"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs =Just $ HS.ImportSpecList False [HS.IVar $ HS.Symbol "<*>", HS.IVar $ HS.Symbol "*>"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad" 
                   , HS.importQualified = False
                   , HS.importAs = Nothing
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Symbol "=<<"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Symbol "=<<"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Applicative" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "pure"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "pure"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.IORef" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "newIORef", HS.IVar $ HS.Ident "readIORef", HS.IVar $ HS.Ident "writeIORef", HS.IVar $ HS.Ident "atomicModifyIORef'"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs =Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "newIORef", HS.IVar $ HS.Ident "readIORef", HS.IVar $ HS.Ident "writeIORef", HS.IVar $ HS.Ident "atomicModifyIORef'"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad.Trans.Class" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "lift"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "lift"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "Monad", HS.IVar $ HS.Ident "when", HS.IVar $ HS.Ident "sequence", HS.IVar $ HS.Ident "join"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs =Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "Monad", HS.IVar $ HS.Ident "when", HS.IVar $ HS.Ident "sequence", HS.IVar $ HS.Ident "join"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Prelude" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
                   -- Ord and Show have to be IThingAll, so we can define custom instances
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "IO", HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "undefined", HS.IVar $ HS.Ident "error", HS.IVar $ HS.Ident "negate", HS.IVar $ HS.Ident "fromIntegral", HS.IVar $ HS.Ident "mapM_", HS.IVar $ HS.Ident "id"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "IO", HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "undefined", HS.IVar $ HS.Ident "error", HS.IVar $ HS.Ident "negate", HS.IVar $ HS.Ident "fromIntegral", HS.IVar $ HS.Ident "mapM_", HS.IVar $ HS.Ident "id"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Unsafe.Coerce" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "unsafeCoerce"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "unsafeCoerce"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Concurrent" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "ThreadId"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "ThreadId"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Concurrent.MVar" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "isEmptyMVar", HS.IVar $ HS.Ident "readMVar"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "isEmptyMVar", HS.IVar $ HS.Ident "readMVar"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Exception" 
                   , HS.importQualified = False
                   , HS.importAs = Nothing
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "assert"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "assert"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Exception" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IThingAll $ HS.Ident "Exception", HS.IVar $ HS.Ident "SomeException", HS.IVar $ HS.Ident "throwTo", HS.IVar $ HS.Ident "throw"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs =Just $ HS.ImportSpecList False [HS.IThingAll $ HS.Ident "Exception", HS.IVar $ HS.Ident "SomeException", HS.IVar $ HS.Ident "throwTo", HS.IVar $ HS.Ident "throw"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Dynamic" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "toDyn", HS.IVar $ HS.Ident "fromDynamic"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "toDyn", HS.IVar $ HS.Ident "fromDynamic"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Map.Lazy" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "lookup", HS.IVar $ HS.Ident "insert"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "lookup", HS.IVar $ HS.Ident "insert"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Web.Scotty" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "get", HS.IVar $ HS.Ident "param", HS.IVar $ HS.Ident "json", HS.IVar $ HS.Ident "raise"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "get", HS.IVar $ HS.Ident "param", HS.IVar $ HS.Ident "json", HS.IVar $ HS.Ident "raise"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Generics.Genifunctors" 
                   , HS.importQualified = True
                   , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just (False,[HS.IVar $ HS.Ident "genFmap"])
-                  , HS.importLoc = noLoc', HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
+                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "genFmap"]
+                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
                   }
   ]
   -- TRANSLATED IMPORTS OF THE ABS-PROGRAM
@@ -179,10 +180,10 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                                             _ -> False) $ map (\ (ABS.AnnDecl _ d) -> d) decls
      in [dec|default (Int,Rat)|] -- better for type inference of numeric variables
         : concatMap tDataInterfDecl dataDecls
-        ++ [HS.SpliceDecl noLoc' [hs|return []|]]
+        ++ [HS.SpliceDecl [hs|return []|]]
         -- Generate a GeniFunctor if it is a polymorphic datatype
         ++ foldl (\ acc -> \case 
-                              ABS.DDataPoly (ABS.U (_,tid)) _ _ -> HS.PatBind noLoc' (HS.PVar $ HS.Ident $ "fmap'" ++ tid) (HS.UnGuardedRhs $ 
+                              ABS.DDataPoly (ABS.U (_,tid)) _ _ -> HS.PatBind (HS.PVar $ HS.Ident $ "fmap'" ++ tid) (HS.UnGuardedRhs $ 
                                                                       HS.SpliceExp $ HS.ParenSplice $ [hs|I'.genFmap|] `HS.App` HS.TypQuote (HS.UnQual $ HS.Ident tid)) Nothing : acc
                               _ -> acc) [] dataDecls
         ++ concatMap tRestDecl restDecls 
@@ -204,17 +205,17 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
         in case symbolValue of
              -- in ABS the interface methods are implicitly exported, 
              -- in HS, typeclass methods must be explicitly exported and existential wrapper constructor
-             Interface _ _ -> [ HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden ++ "'"
-                              , HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden]
+             Interface _ _ -> [ EThingAll $ HS.UnQual $ HS.Ident $ showQA iden ++ "'"
+                              , EThingAll $ HS.UnQual $ HS.Ident $ showQA iden]
              -- in ABS the dataconstructor can be exported without its datatype!
              -- this is wrong, then you cannot do anything with that data-value
              -- in HS we *must* export its datatype also
-             Datacons dname _ _ _ -> [HS.EThingWith (HS.UnQual $ HS.Ident dname)
+             Datacons dname _ _ _ -> [HS.EThingWith HS.NoWildcard (HS.UnQual $ HS.Ident dname)
                                [HS.ConName $ HS.Ident $ showQA iden]]
-             Exception -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden,
+             Exception -> [EThingAll $ HS.UnQual $ HS.Ident $ showQA iden,
                           HS.EVar $ HS.UnQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- myException' smart constructor
                          ]
-             Class _ _ -> [HS.EThingAll $ HS.UnQual $ HS.Ident $ showQA iden
+             Class _ _ -> [EThingAll $ HS.UnQual $ HS.Ident $ showQA iden
                       ,HS.EVar $ HS.UnQual $ HS.Ident $ "smart'" ++ showQA iden -- class smart constructor
                       ,HS.EVar $ HS.UnQual $ HS.Ident $ "init'" ++ showQA iden -- class init block 
                       ]
@@ -233,16 +234,16 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
         in case symbolValue of
              -- in ABS the interface methods are implicitly exported, 
              -- in HS, typeclass methods must be explicitly exported
-             Interface _ _ -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden]
+             Interface _ _ -> [EThingAll $ maybeQual $ HS.Ident $ showQA iden]
              -- in ABS the dataconstructor can be exported without its datatype!
              -- this is wrong, then you cannot do anything with that data-value
              -- in HS we *must* export its datatype also
-             Datacons dname _ _ _ -> [HS.EThingWith (maybeQual $ HS.Ident dname)
+             Datacons dname _ _ _ -> [HS.EThingWith HS.NoWildcard (maybeQual $ HS.Ident dname)
                                [HS.ConName $ HS.Ident $ showQA iden]]
-             Exception -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden,
+             Exception -> [EThingAll $ maybeQual $ HS.Ident $ showQA iden,
                           HS.EVar $ maybeQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- myException' smart constructor
                          ]
-             Class _ _ -> [HS.EThingAll $ maybeQual $ HS.Ident $ showQA iden,
+             Class _ _ -> [EThingAll $ maybeQual $ HS.Ident $ showQA iden,
                           HS.EVar $ maybeQual $ HS.Ident $ headToLower $ showQA iden ++ "'" -- class smart constructor
                          ]
              -- function, datatype, type synonym, foreign
@@ -250,29 +251,29 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
                                                       ) es
 
     tImport :: (?absFileName::String) => ABS.Import -> [HS.ImportDecl]
-    tImport (ABS.StarFromImport _ityp qu) = [HS.ImportDecl (mkLocFromQU qu) (HS.ModuleName $ showQU qu) 
+    tImport (ABS.StarFromImport _ityp qu) = [HS.ImportDecl (HS.ModuleName $ showQU qu) 
                                                  False -- qualified?
                                                  False False Nothing Nothing -- irrelevant
-                                                 (Just (True, [HS.IVar $ HS.Ident "main"]))] -- hiding main
+                                                 (Just $ HS.ImportSpecList True [HS.IVar $ HS.Ident "main"])] -- hiding main
 
     tImport (ABS.AnyImport _ityp qas) = mapMaybe (\ qa ->
                                             let (prefix, iden) = splitQA qa
                                             in if prefix == "ABS.StdLib." && not (nostdlib cmdOpt)
                                                then Nothing
-                                               else Just $ HS.ImportDecl (mkLocFromQA qa) (HS.ModuleName prefix)
+                                               else Just $ HS.ImportDecl (HS.ModuleName prefix)
                                                            True -- qualified?
                                                            False False Nothing Nothing -- irrelevant
-                                                           (Just (False, tImport' True prefix iden)) -- only import this 1 symbol (normally many,  but grammar limitation)
+                                                           (Just $ HS.ImportSpecList False $ tImport' True prefix iden) -- only import this 1 symbol (normally many,  but grammar limitation)
                                                     ) qas
 
         
 
     tImport (ABS.AnyFromImport _ityp qas qu) = if showQU qu == "ABS.StdLib" && not (nostdlib cmdOpt)
                                                then [] -- ignore if it is absstdlib
-                                               else [HS.ImportDecl (mkLocFromQU qu) (HS.ModuleName $ showQU qu) 
+                                               else [HS.ImportDecl (HS.ModuleName $ showQU qu) 
                                                   False -- qualified?
                                                   False False Nothing Nothing -- irrelevant
-                                                  (Just (False, concatMap (tImport' False (showQU qu) . showQA) qas))] -- only  import those symbols
+                                                  (Just $ HS.ImportSpecList False $ concatMap (tImport' False (showQU qu) . showQA) qas)] -- only  import those symbols
 
     tImport' :: IsQualified -> String -> String -> [HS.ImportSpec]
     tImport' isQualified moduleName iden = 
@@ -343,3 +344,4 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
          -- no params, no fields, empty class-name, no alone-methods
 
 
+pattern EThingAll x = HS.EThingWith (HS.EWildcard 1) x []

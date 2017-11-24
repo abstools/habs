@@ -14,7 +14,7 @@ import ABS.Compiler.Codegen.Typ
 import ABS.Compiler.Codegen.Pat
 import ABS.Compiler.Firstpass.Base
 import qualified ABS.AST as ABS
-import qualified Language.Haskell.Exts.Syntax as HS
+import qualified Language.Haskell.Exts.Simple.Syntax as HS
 import Control.Monad.Trans.Reader (local, ask)
 import qualified Data.Map as M (insert, lookup, union, assocs, findWithDefault)
 import Language.Haskell.Exts.QQ (hs)
@@ -37,7 +37,7 @@ tStmExp (ABS.EIf predE thenE elseE) = do
       instantArgs = instantiateMany bs declaredArgs
       instantRes = instantiateOne bs $ ABS.TSimple (ABS.U_ freshTyVar)
       [ue1,ue2] = mUpMany instantArgs [t1,t2] [e1,e2]
-  pure (HS.Do [ HS.Generator noLoc' (HS.PVar $ HS.Ident "if'") ep
+  pure (HS.Do [ HS.Generator (HS.PVar $ HS.Ident "if'") ep
               , HS.Qualifier [hs|if if' then $ue1 else $ue2|]
               ]
        ,instantRes)
@@ -58,9 +58,9 @@ tStmExp (ABS.ECase ofE branches) = do
       es' = mUpMany instantRes ts es
   tbranches <- mapM (\ (ABS.ECaseBranch pat _, texp') -> do
                       (tpat,tguards) <- tPattern pat
-                      pure $ HS.Alt noLoc' tpat ((if null tguards then HS.UnGuardedRhs else (HS.GuardedRhss . pure . HS.GuardedRhs noLoc' tguards)) texp') Nothing
+                      pure $ HS.Alt tpat ((if null tguards then HS.UnGuardedRhs else (HS.GuardedRhss . pure . HS.GuardedRhs tguards)) texp') Nothing
                     ) (zip branches es')
-  pure (HS.Do [ HS.Generator noLoc' (HS.PVar $ HS.Ident "of'") tof
+  pure (HS.Do [ HS.Generator (HS.PVar $ HS.Ident "of'") tof
               , HS.Qualifier (HS.Case (HS.Var $ HS.UnQual $ HS.Ident "of'") tbranches)
               ]
        ,M.findWithDefault ABS.TInfer "A'" bs)
@@ -300,7 +300,7 @@ tStmExp (ABS.EField var@(ABS.L (p, field))) = if null ?cname
                                                                   in pure ([hs|I'.pure ($fieldFun this'')|], t)
                                                          Nothing -> errorPos p "no such field"
 tStmExp (ABS.ELit lit) = pure $ case lit of
-                                   ABS.LStr str -> ([hs|I'.pure $(HS.ExpTypeSig noLoc' (HS.Lit $ HS.String str) (HS.TyCon (HS.UnQual $ HS.Ident "String")))|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"String")) -- type for OverloadedStrings disambiguate
+                                   ABS.LStr str -> ([hs|I'.pure $(HS.ExpTypeSig (HS.Lit $ HS.String str) (HS.TyCon (HS.UnQual $ HS.Ident "String")))|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"String")) -- type for OverloadedStrings disambiguate
                                    ABS.LInt i ->  ([hs|I'.pure $(HS.Lit $ HS.Int i)|], ABS.TInfer)
                                    ABS.LFloat f -> ([hs|I'.pure $(HS.Lit $ HS.Frac $ toRational f)|], ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"Rat"))
                                    ABS.LThis -> if null ?cname
@@ -311,9 +311,9 @@ tStmExp (ABS.ELit lit) = pure $ case lit of
 mUpOne :: (?st :: SymbolTable) => ABS.T -> ABS.T -> HS.Exp -> HS.Exp
 mUpOne unified actual e = 
   maybe e 
-        (\ info -> HS.ExpTypeSig noLoc' [hs|( $(buildUp info) <$!> $e )|] 
+        (\ info -> HS.ExpTypeSig [hs|( $(buildUp info) <$!> $e )|] 
                                         (let wc = HS.TyWildCard $ Just $ HS.Ident "a"
-                                         in HS.TyForall Nothing [HS.ClassA (HS.Qual (HS.ModuleName "I'") (HS.Ident "Monad")) [wc]] 
+                                         in HS.TyForall Nothing (Just $ HS.CxSingle $ HS.ClassA (HS.Qual (HS.ModuleName "I'") (HS.Ident "Monad")) [wc])
                                                 $ HS.TyApp wc (tType unified))) 
         (buildInfo unified actual)
 

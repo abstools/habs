@@ -14,7 +14,7 @@ import Control.Monad.Trans.Reader (runReader)
 import Data.Maybe (mapMaybe, isJust)
 import qualified Data.Map as M
 import qualified ABS.AST as ABS
-import qualified Language.Haskell.Exts.Syntax as HS
+import qualified Language.Haskell.Exts.Simple.Syntax as HS
 import Data.List (find)
 
 import Control.Exception (assert)
@@ -24,24 +24,22 @@ import Control.Exception (assert)
 -- Datatypes
 tDataInterfDecl :: (?absFileName::String, ?st::SymbolTable) => ABS.Decl -> [HS.Decl]
 tDataInterfDecl (ABS.DData tid constrs) =  tDataInterfDecl (ABS.DDataPoly tid [] constrs) -- Normalization: just parametric datatype with empty list of type variables
-tDataInterfDecl (ABS.DDataPoly (ABS.U (dpos,tid)) tyvars constrs) =  HS.DataDecl (mkLoc dpos) HS.DataType [] (HS.Ident tid) 
-
-          -- Type Variables
-          (map (\ (ABS.U (_,varid)) -> HS.UnkindedVar $ HS.Ident $ headToLower varid) tyvars)
-
+tDataInterfDecl (ABS.DDataPoly (ABS.U (dpos,tid)) tyvars constrs) =  HS.DataDecl HS.DataType Nothing
+          -- Name and type Variables
+          (foldl (\ acc (ABS.U (_,varid))-> HS.DHApp acc $ HS.UnkindedVar $ HS.Ident $ headToLower varid) (HS.DHead $ HS.Ident tid) tyvars)
+          
           -- Data Constructors
           (map (\case
-                ABS.SinglConstrIdent (ABS.U (_,cid)) -> HS.QualConDecl noLoc' [] [] (HS.ConDecl (HS.Ident cid) []) 
-                ABS.ParamConstrIdent (ABS.U (_,cid)) args -> HS.QualConDecl noLoc' [] [] (HS.ConDecl (HS.Ident cid) (map (HS.TyBang HS.BangedTy . tTypeOrTyVar tyvars . typOfConstrType) args))) constrs) -- TODO: maybe only allow Banged Int,Double,... like the class-datatype
+                ABS.SinglConstrIdent (ABS.U (_,cid)) -> HS.QualConDecl Nothing Nothing (HS.ConDecl (HS.Ident cid) []) 
+                ABS.ParamConstrIdent (ABS.U (_,cid)) args -> HS.QualConDecl Nothing Nothing (HS.ConDecl (HS.Ident cid) (map (HS.TyBang HS.BangedTy HS.NoUnpack . tTypeOrTyVar tyvars . typOfConstrType) args))) constrs) -- TODO: maybe only allow Banged Int,Double,... like the class-datatype
 
           -- Deriving
-          (if hasInterfForeign constrs
-           then [(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])]
-           else [(HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq", []), (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Ord", []),  (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show", [])])
+          (Just $ HS.Deriving $ fmap (HS.IRule Nothing Nothing . HS.IHCon . HS.Qual (HS.ModuleName "I'") . HS.Ident )
+           (if hasInterfForeign constrs then ["Eq", "Show"] else ["Eq", "Ord", "Show"]))
           -- Extra record-accessor functions
           : map (\ (ABS.L (_,fname), consname, idx, len) ->  
-                     HS.FunBind [HS.Match noLoc' (HS.Ident fname) [HS.PApp (HS.UnQual (HS.Ident consname)) (replicate idx HS.PWildCard ++ [HS.PVar (HS.Ident "a")] ++ replicate (len - idx - 1) HS.PWildCard)] Nothing (HS.UnGuardedRhs (HS.Var (HS.UnQual (HS.Ident "a")))) Nothing,
-                                 HS.Match noLoc' (HS.Ident fname) [HS.PWildCard] Nothing (HS.UnGuardedRhs [hs|I'.throw (RecSelError (concatenate "Data constructor does not have accessor " $(HS.Lit $ HS.String fname)))|]) Nothing
+                     HS.FunBind [HS.Match (HS.Ident fname) [HS.PApp (HS.UnQual (HS.Ident consname)) (replicate idx HS.PWildCard ++ [HS.PVar (HS.Ident "a")] ++ replicate (len - idx - 1) HS.PWildCard)] (HS.UnGuardedRhs (HS.Var (HS.UnQual (HS.Ident "a")))) Nothing,
+                                 HS.Match (HS.Ident fname) [HS.PWildCard] (HS.UnGuardedRhs [hs|I'.throw (RecSelError (concatenate "Data constructor does not have accessor " $(HS.Lit $ HS.String fname)))|]) Nothing
                      ]) (
              concatMap (\case
                ABS.SinglConstrIdent _ -> []
@@ -84,41 +82,42 @@ tDataInterfDecl (ABS.DDataPoly (ABS.U (dpos,tid)) tyvars constrs) =  HS.DataDecl
 tDataInterfDecl (ABS.DInterf tid ms) = tDataInterfDecl (ABS.DExtends tid [] ms) 
 
 -- Interfaces
-tDataInterfDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (mkLoc ipos) 
-        (map (\ qtyp -> HS.ClassA (HS.UnQual $ HS.Ident $ showQU qtyp ++ "'") [HS.TyVar (HS.Ident "a")]) extends) -- super-interfaces
-        (HS.Ident $ tname ++ "'") -- name of interface
-        [HS.UnkindedVar (HS.Ident "a")] -- all interfaces have kind * -> *
+tDataInterfDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl 
+        (Just $ HS.CxTuple $ map (\ qtyp -> HS.ClassA (HS.UnQual $ HS.Ident $ showQU qtyp ++ "'") [HS.TyVar (HS.Ident "a")]) extends) -- super-interfaces
+        (HS.DHead (HS.Ident $ tname ++ "'") `HS.DHApp` HS.UnkindedVar (HS.Ident "a")) -- all interfaces have kind * -> *
         []
-        (map tMethSig ms)
+        (Just $ map tMethSig ms)
       : -- Existential Wrapper
-      HS.DataDecl noLoc' HS.DataType [] (HS.Ident tname) [] [HS.QualConDecl noLoc' [HS.UnkindedVar $ HS.Ident "a"] [HS.ClassA (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyVar (HS.Ident "a")]] (HS.ConDecl (HS.Ident tname) [HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a")])] []
+      HS.DataDecl HS.DataType Nothing (HS.DHead $ HS.Ident tname) [HS.QualConDecl (Just [HS.UnkindedVar $ HS.Ident "a"]) (Just $ HS.CxSingle $ HS.ClassA (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyVar (HS.Ident "a")]) (HS.ConDecl (HS.Ident tname) [HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a")])] Nothing
       : -- Show instance for the wrapper
-      HS.InstDecl noLoc' Nothing [] [] (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show") [HS.TyCon $ HS.UnQual $ HS.Ident $ tname]
-            [HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident "show") [HS.PWildCard] Nothing (HS.UnGuardedRhs $ HS.Lit $ HS.String tname) Nothing])]
+      HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show") `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident $ tname))
+            (Just [HS.InsDecl (HS.FunBind  [HS.Match (HS.Ident "show") [HS.PWildCard] (HS.UnGuardedRhs $ HS.Lit $ HS.String tname) Nothing])])
       : -- Eq instance for the wrapper
-      HS.InstDecl noLoc' Nothing [] [] (HS.Qual (HS.ModuleName "I'") $ HS.Ident  "Eq") [HS.TyCon $ HS.UnQual $ HS.Ident tname]
-         [HS.InsDecl $ HS.FunBind [HS.Match noLoc' (HS.Symbol "==") 
+      HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq") `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident $ tname))
+         (Just [HS.InsDecl $ HS.FunBind [HS.Match (HS.Symbol "==") 
                                    [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref1'", HS.PWildCard]],
                                     HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref2'", HS.PWildCard]]]
-                                   Nothing (HS.UnGuardedRhs [hs|ref1' == I'.unsafeCoerce ref2'|]) Nothing]]
+                                    (HS.UnGuardedRhs [hs|ref1' == I'.unsafeCoerce ref2'|]) Nothing]])
 
        -- null class is an instance of any interface
-       : HS.InstDecl noLoc' Nothing [] [] (HS.UnQual $ HS.Ident $ tname ++ "'") [HS.TyCon $ HS.UnQual $ HS.Ident "Null'"] 
-             (map (\ (ABS.MethSig _ _ (ABS.L (_,mid)) _) -> 
+       : HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.UnQual $ HS.Ident $ tname ++ "'") `HS.IHApp` (HS.TyCon $ HS.UnQual $ HS.Ident "Null'"))
+             (Just $ map (\ (ABS.MethSig _ _ (ABS.L (_,mid)) _) -> 
                        HS.InsDecl [dec|__mid__ = I'.undefined|] ) ms)
 
 
-      : -- Sub instance for unwrapped this & null
-      HS.InstDecl noLoc' Nothing []
-            [HS.ClassA (HS.UnQual $ HS.Ident (tname ++ "'")) [HS.TyVar $ HS.Ident "a"]] -- context
-            (HS.UnQual $ HS.Ident "Sub'")  -- instance (I1' a) => Sub (Obj' a) I1
-            [ HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a")
-            , HS.TyCon $ HS.UnQual $ HS.Ident $ tname]
-            [   -- the upcasting method
+      : -- Sub instance for unwrapped this & null -- instance (I1' a) => Sub (Obj' a) I1
+      HS.InstDecl Nothing (HS.IRule Nothing 
+            (Just $ HS.CxSingle $ HS.ClassA (HS.UnQual $ HS.Ident (tname ++ "'")) [HS.TyVar $ HS.Ident "a"]) -- context
+            (HS.IHCon (HS.UnQual $ HS.Ident "Sub'")
+              `HS.IHApp`  
+              HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a")
+              `HS.IHApp`
+              (HS.TyCon $ HS.UnQual $ HS.Ident $ tname)))
+            (Just [   -- the upcasting method
                 -- is wrapping with the constructor
-                HS.InsDecl $ HS.FunBind $ [HS.Match noLoc' (HS.Ident "up'") [] Nothing 
+                HS.InsDecl $ HS.FunBind $ [HS.Match (HS.Ident "up'") [] 
                                                  (HS.UnGuardedRhs $ (HS.Con $ HS.UnQual $ HS.Ident tname)
-                                                 ) Nothing] ]
+                                                 ) Nothing] ])
 
       : -- Sub instances of all direct AND indirect supertypes
       generateSubForAllSupers
@@ -131,7 +130,7 @@ tDataInterfDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (m
                               ABS.TSimple (ABS.U_ (ABS.U (_, "Unit"))) -> False
                               _ -> True) || not (null params))
         then errorPos mpos "run should have zero parameters and return type Unit"
-        else HS.ClsDecl $ HS.TypeSig (mkLoc mpos) [HS.Ident mname] $
+        else HS.ClsDecl $ HS.TypeSig [HS.Ident mname] $
                foldr  HS.TyFun -- function application is right-associative
                  (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "ABS'") (tType retTyp))
                  (map (\ (ABS.FormalPar typ _) -> tType typ) params ++ [(HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a"))]) -- last param is this
@@ -139,14 +138,12 @@ tDataInterfDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl (m
     generateSubForAllSupers :: (?st::SymbolTable) => [HS.Decl]
     generateSubForAllSupers = case M.lookup (SN tname Nothing) ?st of
                      Just (SV (Interface _ all_extends) _) -> map 
-                      (\ (SN sup _) -> HS.InstDecl noLoc' Nothing [] []
-                       (HS.UnQual $ HS.Ident "Sub'")
-                       [HS.TyCon $ HS.UnQual $ HS.Ident tname, HS.TyCon $ HS.UnQual $ HS.Ident sup] -- instance Sub SubInterf SupInterf
-                       [   -- the upcasting method is unwrapping and wrapping the data constructors
-                          HS.InsDecl $ HS.FunBind $ [HS.Match noLoc' (HS.Ident "up'") [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PVar $ HS.Ident "x'"]] Nothing 
+                      (\ (SN sup _) -> HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.UnQual $ HS.Ident "Sub'") `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident sup)) -- instance Sub SubInterf SupInterf
+                       (Just [   -- the upcasting method is unwrapping and wrapping the data constructors
+                          HS.InsDecl $ HS.FunBind $ [HS.Match (HS.Ident "up'") [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PVar $ HS.Ident "x'"]] 
                                                            (HS.UnGuardedRhs $ HS.App (HS.Con $ HS.UnQual $ HS.Ident sup)
                                                                   (HS.Var $ HS.UnQual $ HS.Ident "x'")) Nothing]
-                       ])
+                       ]))
                       (M.keys all_extends)
                      _ -> error "development error at firstpass"
 
@@ -166,12 +163,12 @@ tRestDecl (ABS.DClassImplements tident imps fdecls maybeBlock mdecls) = tRestDec
 
 -- Functions
 tRestDecl (ABS.DFunPoly fReturnTyp (ABS.L (fpos,fid)) tyvars params body) = [
-        HS.TypeSig noLoc' [HS.Ident fid] (HS.TyForall (Just $ map (\(ABS.U (_, tident)) -> HS.UnkindedVar $ HS.Ident $ headToLower tident) tyvars) [HS.WildCardA Nothing] $
+        HS.TypeSig [HS.Ident fid] (HS.TyForall (Just $ map (\(ABS.U (_, tident)) -> HS.UnkindedVar $ HS.Ident $ headToLower tident) tyvars) (Just $ HS.CxSingle $ HS.WildCardA Nothing) $
           foldr  -- function application is right-associative
           (\ (ABS.FormalPar ptyp _) acc -> tTypeOrTyVar tyvars ptyp `HS.TyFun` acc) 
           (tTypeOrTyVar tyvars fReturnTyp) params)
-      , HS.FunBind [HS.Match (mkLoc fpos) (HS.Ident fid) (map (\(ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar $ HS.Ident pid) params)
-                          Nothing (HS.UnGuardedRhs $
+      , HS.FunBind [HS.Match (HS.Ident fid) (map (\(ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar $ HS.Ident pid) params)
+                           (HS.UnGuardedRhs $
                                          (let ?cname = ""
                                               ?fields = M.empty
                                           in tFunBody body tyvars params fReturnTyp)
@@ -183,33 +180,32 @@ tRestDecl (ABS.DFunPoly fReturnTyp (ABS.L (fpos,fid)) tyvars params body) = [
 tRestDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls ldecls mInit rdecls) = 
 
   -- An ADT-record which contains the fields of the class
-  HS.DataDecl (mkLoc cpos) HS.DataType [] (HS.Ident clsName) [] 
-        [HS.QualConDecl noLoc' [] [] $ HS.RecDecl (HS.Ident clsName) 
+  HS.DataDecl HS.DataType Nothing (HS.DHead $ HS.Ident clsName)
+        [HS.QualConDecl Nothing Nothing $ HS.RecDecl (HS.Ident clsName) 
                     (foldr (\ ((ABS.L (_,i)), t) acc ->
                       (case t of
-                        ABS.TPoly (ABS.U_ (ABS.U (_,"Fut")))  _ -> (([HS.Ident $  i ++ "''" ++ clsName], [ty|[I'.ThreadId]|]) :) -- an extra field holding the threadids
+                        ABS.TPoly (ABS.U_ (ABS.U (_,"Fut")))  _ -> (HS.FieldDecl [HS.Ident $  i ++ "''" ++ clsName] [ty|[I'.ThreadId]|] :) -- an extra field holding the threadids
                         _ -> id)
-                      (([HS.Ident $  i ++ "'" ++ clsName], tType t): acc) -- TODO: bang if prim type
-                     ) [] $ M.toAscList fields)] []
+                      (HS.FieldDecl [HS.Ident $  i ++ "'" ++ clsName] (tType t): acc) -- TODO: bang if prim type
+                     ) [] $ M.toAscList fields)] Nothing
 
   :
-  [HS.TypeSig noLoc' [HS.Ident $ "smart'" ++ clsName]
+  [HS.TypeSig [HS.Ident $ "smart'" ++ clsName]
     (foldr (\ (ABS.FormalPar t _) acc -> tType t `HS.TyFun` acc) (HS.TyCon $ HS.UnQual $ HS.Ident clsName) cparams) 
-  ,HS.FunBind [HS.Match noLoc' (HS.Ident $ "smart'" ++ clsName)
+  ,HS.FunBind [HS.Match (HS.Ident $ "smart'" ++ clsName)
     -- the class params serve as input-args to the smart constructor
-    (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident $ pid ++ "'this")) cparams) Nothing 
+    (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident $ pid ++ "'this")) cparams) 
     -- rhs
     (HS.UnGuardedRhs $ fst $ runReader (let ?cname = ""  -- it is transformed to pure code, so no need for clsName
                                             ?fields = fields
                                         in tPureExp $ transformFieldBody ldecls) M.empty) Nothing]
   ]
   ++ -- The init'Class function
-  [ HS.TypeSig noLoc' [HS.Ident $ "init'" ++ clsName] (HS.TyApp 
+  [ HS.TypeSig [HS.Ident $ "init'" ++ clsName] (HS.TyApp 
                                                       (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") 
                                                       (HS.TyCon $ HS.UnQual $ HS.Ident clsName) `HS.TyFun` [ty|I'.IO ()|])
-  , HS.FunBind [HS.Match (mkLoc cpos) (HS.Ident $ "init'" ++ clsName)
+  , HS.FunBind [HS.Match (HS.Ident $ "init'" ++ clsName)
                [[pat|this@(Obj' this' _)|]] -- this, the only param
-               Nothing 
                (HS.UnGuardedRhs $
                   let runCall = [hs|this <!!> $(HS.Var $ HS.UnQual $ HS.Ident $ "run''" ++ clsName)|]
                   in case mInit of
@@ -233,26 +229,20 @@ tRestDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls l
                                                              <|> M.lookup (SN ident (Just (prefix, True))) ?st 
                       in 
     -- the direct instances
-    HS.InstDecl noLoc' Nothing [] [] 
-          (HS.UnQual $ HS.Ident $ showQU qtyp ++ "'") -- the interface name
-          [HS.TyCon $ HS.UnQual $ HS.Ident $ clsName] -- the class name
-          (fmap (\ mname -> let Just (ABS.MethClassBody retTyp _ mparams block) = M.lookup mname classMethods
-                           in HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident mname)
+    HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.UnQual $ HS.Ident $ showQU qtyp ++ "'") `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident $ clsName))
+          (Just $ fmap (\ mname -> let Just (ABS.MethClassBody retTyp _ mparams block) = M.lookup mname classMethods
+                           in HS.InsDecl (HS.FunBind  [HS.Match (HS.Ident mname)
                                                        -- method params
                                                        (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _)|]])
-                                                       Nothing 
                                                        (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False retTyp) Nothing])
                 ) (map fst directMethods))
     -- the indirect instances
     : M.foldlWithKey (\ acc (SN n _) indirectMethods ->
-                          HS.InstDecl noLoc' Nothing [] [] 
-                                (HS.UnQual $ HS.Ident $ n ++ "'") -- the interface name
-                                [HS.TyCon $ HS.UnQual $ HS.Ident $ clsName] -- the class name
-                                (fmap (\ mname -> let Just (ABS.MethClassBody retTyp _ mparams block) = M.lookup mname classMethods
-                                                 in HS.InsDecl (HS.FunBind  [HS.Match noLoc' (HS.Ident mname) 
+                          HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.UnQual $ HS.Ident $ n ++ "'") `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident $ clsName))
+                                (Just $ fmap (\ mname -> let Just (ABS.MethClassBody retTyp _ mparams block) = M.lookup mname classMethods
+                                                 in HS.InsDecl (HS.FunBind  [HS.Match (HS.Ident mname) 
                                                                              -- method params
                                                                              (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _)|]])
-                                                                             Nothing 
                                                                              (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False retTyp) Nothing])
                                       ) (map fst indirectMethods)) : acc
                      ) [] extends
@@ -260,16 +250,15 @@ tRestDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls l
 
   ++ -- the rest alone, non-interface methods, named as:  method''Class
   concatMap (\ (mname, ABS.MethClassBody retTyp _ mparams block) ->
-           [ HS.TypeSig noLoc' [HS.Ident $ mname ++ "''" ++ clsName] $
+           [ HS.TypeSig [HS.Ident $ mname ++ "''" ++ clsName] $
                foldr HS.TyFun -- function application is right-associative
                (HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "ABS'") (tType retTyp))
                (map (\ (ABS.FormalPar typ _) -> tType typ) mparams ++ [(HS.TyApp 
                                                                        (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") 
                                                                        (HS.TyCon $ HS.UnQual $ HS.Ident clsName))])
-           , HS.FunBind  [HS.Match noLoc' (HS.Ident $ mname ++ "''" ++ clsName)
+           , HS.FunBind  [HS.Match (HS.Ident $ mname ++ "''" ++ clsName)
                          -- method params
                          (map (\ (ABS.FormalPar _ (ABS.L (_,pid))) -> HS.PVar (HS.Ident pid)) mparams ++ [[pat|this@(Obj' this' _)|]])
-                         Nothing 
                          (HS.UnGuardedRhs $ tMethod block mparams fields clsName (M.keys aloneMethods) False retTyp) Nothing]] )
           (M.assocs aloneMethods)
 
@@ -340,29 +329,25 @@ tRestDecl (ABS.DClassParImplements cident@(ABS.U (cpos,clsName)) cparams impls l
 
 
 -- Type synonyms with variables
-tRestDecl (ABS.DTypePoly (ABS.U (tpos,tid)) tyvars typ) = [HS.TypeDecl (mkLoc tpos) (HS.Ident tid) 
-                                                                 (map (\ (ABS.U (_,varid)) -> 
-                                                                           HS.UnkindedVar $ HS.Ident $ headToLower varid)
-                                                                  tyvars)
-                                                                 (tTypeOrTyVar tyvars typ)
-                                                          ]
+tRestDecl (ABS.DTypePoly (ABS.U (tpos,tid)) tyvars typ) = 
+  [HS.TypeDecl (foldl (\ acc (ABS.U (_,varid)) -> HS.DHApp acc $ HS.UnkindedVar $ HS.Ident $ headToLower varid) (HS.DHead $ HS.Ident tid) tyvars) (tTypeOrTyVar tyvars typ)]
 
          
 -- Exception datatypes
 tRestDecl (ABS.DException constr) =
   -- 1) a data MyException = MyException(args)
-  [ HS.DataDecl (mkLoc epos) HS.DataType [] (HS.Ident cid) [] 
+  [ HS.DataDecl HS.DataType Nothing (HS.DHead $ HS.Ident cid)
     -- one sole constructor with the same name as the exception name
-    [HS.QualConDecl noLoc' [] [] 
+    [HS.QualConDecl Nothing Nothing
       (HS.ConDecl (HS.Ident cid)
-        (map (HS.TyBang HS.BangedTy . tType . typOfConstrType) cargs))]
+        (map (HS.TyBang HS.BangedTy HS.NoUnpack . tType . typOfConstrType) cargs))]
     -- two deriving for exception datatypes Show and Typeable (TODO: Eq for ABS) (GHC>=7.10 by default auto-derives Typeable if needed)
-    [(HS.Qual (HS.ModuleName "I'") (HS.Ident "Show"), [])]
+    (Just $ HS.Deriving [HS.IRule Nothing Nothing $ HS.IHCon $ HS.Qual (HS.ModuleName "I'") $ HS.Ident "Show"])
   -- 2) a instance Exception MyException
-  , HS.InstDecl noLoc' Nothing [] [] (HS.Qual (HS.ModuleName "I'") $ HS.Ident $ "Exception") [HS.TyCon $ HS.UnQual $ HS.Ident cid] 
-      [ HS.InsDecl [dec|toException = absExceptionToException'|]
+  , HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.Qual (HS.ModuleName "I'") $ HS.Ident $ "Exception") `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident cid))
+      (Just [ HS.InsDecl [dec|toException = absExceptionToException'|]
       , HS.InsDecl [dec|fromException = absExceptionFromException'|]
-      ]
+      ])
   ]
   -- TODO: allow or disallow record-accessor functions for exception, because it requires type-safe casting
   where ((epos,cid), cargs) = case constr of

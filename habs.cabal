@@ -10,7 +10,7 @@ homepage: http://abs-models.org
 bug-reports: https://github.com/abstools/habs/issues
 
 stability: provisional
-tested-with: GHC == 8.0.1, GHC == 8.0.2
+tested-with: GHC == 8.0.2, GHC == 8.2.2
 build-type: Simple
 cabal-version: >= 1.8
 
@@ -37,10 +37,8 @@ executable habs
     base >= 4.9 && < 5,
     habs-parser,
     -- for outputting a Haskell AST
-    haskell-src-exts >= 1.17.0 && < 1.18.0,
-    -- otherwise haskell-src-exts-qq does not build
-    haskell-src-meta < 0.7.0,
-    haskell-src-exts-qq == 0.7,
+    haskell-src-exts-simple,
+    haskell-src-exts-qq >= 0.8,
     -- for intermediate datastructures (e.g. symboltable)
     containers,
     -- for a Reader-monad to implement local scope
@@ -87,8 +85,8 @@ test-suite golden
     habs-runtime,
     habs-parser,
     -- for outputting a Haskell AST
-    haskell-src-exts >= 1.17.0,
-    haskell-src-exts-qq == 0.7,
+    haskell-src-exts-simple,
+    haskell-src-exts-qq >= 0.8,
     -- for intermediate datastructures (e.g. symboltable)
     containers,
     -- for a Reader-monad to implement local scope

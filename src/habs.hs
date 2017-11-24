@@ -2,8 +2,8 @@
 module Main where
 
 import qualified ABS.AST as ABS (Program (Program))
-import qualified Language.Haskell.Exts.Syntax as HS (Module (..), ModuleName (..))
-import qualified Language.Haskell.Exts.Pretty as HS (prettyPrintWithMode, defaultMode, linePragmas)
+import qualified Language.Haskell.Exts.Simple.Syntax as HS
+import qualified Language.Haskell.Exts.Simple.Pretty as HS (prettyPrintWithMode, defaultMode, linePragmas)
 import ABS.Parser
 
 import ABS.Compiler.CmdOpt
@@ -43,7 +43,7 @@ main = do
   where
     -- | pretty-print a Haskell-AST to a file ".hs"
     ppHaskellFile :: HS.Module -> IO ()
-    ppHaskellFile m@(HS.Module _ (HS.ModuleName s) _ _ _ _ _) = do
+    ppHaskellFile m@(HS.Module (Just (HS.ModuleHead (HS.ModuleName s) _ _)) _ _ _) = do
   
       createDirectoryIfMissing True haskellDirName -- with True, it's like mkdir -p
   

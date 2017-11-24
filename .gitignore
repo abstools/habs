@@ -21,7 +21,7 @@ gen/
 *_flymake.hs
 TAGS
 tags
-.tags
+*.tags
 
 # OS
 *~

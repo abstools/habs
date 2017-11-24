@@ -13,12 +13,12 @@ before_cache:
 
 matrix:
   include:
-    - env: CABALVER=1.24 GHCVER=8.0.1
-      compiler: ": #GHC 8.0.1"
-      addons: {apt: {packages: [cabal-install-1.24,ghc-8.0.1,happy-1.19.5,hscolour], sources: [hvr-ghc]}}
     - env: CABALVER=1.24 GHCVER=8.0.2
       compiler: ": #GHC 8.0.2"
       addons: {apt: {packages: [cabal-install-1.24,ghc-8.0.2,happy-1.19.5,hscolour], sources: [hvr-ghc]}}
+    - env: CABALVER=2.0 GHCVER=8.2.2
+      compiler: ": #GHC 8.2.2"
+      addons: {apt: {packages: [cabal-install-2.0,ghc-8.2.2,happy-1.19.5,hscolour], sources: [hvr-ghc]}}
 
 before_install:
  - unset CC
@@ -51,7 +51,7 @@ install:
      git submodule update --init;
      cd habs-parser; cabal install;
      cd ../habs-runtime; cabal install -fwait-all-cogs;
-     cd ../habs-stdlib; cabal install;
+     cd ../haskell-src-exts-qq; cabal install;
      cd ..;
      cabal install --only-dependencies --enable-tests --enable-benchmarks;
    fi
@@ -82,7 +82,7 @@ script:
    (cd dist && cabal install --force-reinstalls "$SRC_TGZ")
 
 after_script:
-  - if [ "$TRAVIS_BRANCH" == "master" -a "$TRAVIS_PULL_REQUEST" == "false" -a "$GHCVER" == "8.0.1" ]; 
+  - if [ "$TRAVIS_BRANCH" == "master" -a "$TRAVIS_PULL_REQUEST" == "false" -a "$GHCVER" == "8.2.2" ]; 
     then
        cabal haddock --executables --hyperlink-source --html-location='http://hackage.haskell.org/packages/archive/$pkg/latest/doc/html'; 
        cp dist/test-results.html dist/doc/html/habs/habs/;
