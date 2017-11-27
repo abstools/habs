@@ -1,7 +1,7 @@
 VAGRANTFILE_API_VERSION = "2"
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
-  config.vm.box = "ubuntu/wily64"
+  config.vm.box = "ubuntu/xenial64"
 
   config.vm.post_up_message = <<-MSG
 Welcome to Haskell backend of ABS language.
@@ -34,13 +34,13 @@ MSG
                       inline: <<-SHELL
 
 # Set up paths
-cat >/home/vagrant/.abstoolsrc <<EOF
-PATH=\$PATH:/opt/ghc/8.0.1/bin:/opt/cabal/1.24/bin:/opt/happy/1.19.5/bin:/home/vagrant/habs/.cabal-sandbox/bin
-export GHC_PACKAGE_PATH=/home/vagrant/habs/.cabal-sandbox/x86_64-linux-ghc-8.0.1-packages.conf.d:
+cat >~/.abstoolsrc <<EOF
+PATH=\$PATH:/opt/ghc/8.2.2/bin:/opt/cabal/2.0/bin:/opt/happy/1.19.5/bin:~/habs/.cabal-sandbox/bin
+export GHC_PACKAGE_PATH=~/habs/.cabal-sandbox/x86_64-linux-ghc-8.2.2-packages.conf.d:
 EOF
 
-if [ -z "$(grep abstoolsrc /home/vagrant/.bashrc)" ] ; then
-cat >>/home/vagrant/.bashrc <<EOF
+if [ -z "$(grep abstoolsrc ~/.bashrc)" ] ; then
+cat >>~/.bashrc <<EOF
 . .abstoolsrc
 EOF
 fi
@@ -51,22 +51,23 @@ echo
 
 sudo add-apt-repository ppa:hvr/ghc
 sudo apt-get update -y -q
-sudo apt-get install -y -q ghc-8.0.1 cabal-install-1.24 happy-1.19.5 git
+sudo apt-get install -y -q ghc-8.2.2 cabal-install-2.0 happy-1.19.5 git zlib1g-dev
 
 # clone habs repo and subrepos
-rm -rf /home/vagrant/habs
-git clone https://github.com/abstools/habs /home/vagrant/habs
-cd /home/vagrant/habs
+rm -rf ~/habs
+git clone https://github.com/abstools/habs ~/habs
+cd ~/habs
 git submodule update --init
 
 # build habs parser + transcompiler + runtime + stdlib and all of their dependencies
-export PATH=$PATH:/opt/ghc/8.0.1/bin:/opt/cabal/1.24/bin:/opt/happy/1.19.5/bin # needed to find haskell tools
+export PATH=$PATH:/opt/ghc/8.2.2/bin:/opt/cabal/2.0/bin:/opt/happy/1.19.5/bin # needed to find haskell tools
 unset GHC_PACKAGE_PATH # otherwise cabal will complain
 cabal sandbox init
 cabal update
 cabal sandbox add-source habs-parser
 cabal sandbox add-source habs-runtime
 cabal sandbox add-source habs-stdlib
+cabal sandbox add-source haskell-src-exts-qq
 cabal install -j1 habs-runtime -fwait-all-cogs  # explicitly installing runtime to pass wait-all-cogs compile flag
 cabal install -j1 # install the transcompiler (will also install parser, stdlib)
 
