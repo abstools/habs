@@ -66,7 +66,6 @@ cabal sandbox init
 cabal update
 cabal sandbox add-source habs-parser
 cabal sandbox add-source habs-runtime
-cabal sandbox add-source habs-stdlib
 cabal sandbox add-source haskell-src-exts-qq
 cabal install -j1 habs-runtime -fwait-all-cogs  # explicitly installing runtime to pass wait-all-cogs compile flag
 cabal install -j1 # install the transcompiler (will also install parser, stdlib)
