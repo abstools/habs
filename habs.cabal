@@ -37,7 +37,8 @@ executable habs
     base >= 4.9 && < 5,
     habs-parser,
     -- for outputting a Haskell AST
-    haskell-src-exts-simple < 1.20, -- broken for 1.20, HSE introduces broken changes
+    -- broken for 1.20, HSE introduces broken changes
+    haskell-src-exts-simple < 1.20,
     haskell-src-exts-qq >= 0.8,
     -- for intermediate datastructures (e.g. symboltable)
     containers,
