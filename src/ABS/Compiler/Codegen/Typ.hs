@@ -13,7 +13,7 @@ import qualified ABS.AST as ABS
 import ABS.Compiler.Firstpass.Base
 import Language.Haskell.Exts.QQ (hs)
 import qualified Data.Map as M
-import qualified Language.Haskell.Exts.Syntax as HS
+import qualified Language.Haskell.Exts.Simple.Syntax as HS
 import Data.List (find)
 
 

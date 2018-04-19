@@ -12,7 +12,7 @@ import ABS.Compiler.Codegen.Typ
 import ABS.Compiler.Codegen.Pat
 import ABS.Compiler.Firstpass.Base
 import qualified ABS.AST as ABS
-import qualified Language.Haskell.Exts.Syntax as HS
+import qualified Language.Haskell.Exts.Simple.Syntax as HS
 import Control.Monad.Trans.Reader (runReader, local, ask)
 import qualified Data.Map as M (fromList, insert, lookup, union, assocs, lookup, findWithDefault)
 import Language.Haskell.Exts.QQ (hs)
@@ -59,7 +59,7 @@ tPureExp (ABS.ECase ofE branches) = do
       es' = mUpMany instantRes ts es
   tbranches <- mapM (\ (ABS.ECaseBranch pat _, texp') -> do
                       (tpat,tguards) <- tPattern pat
-                      pure $ HS.Alt noLoc' tpat ((if null tguards then HS.UnGuardedRhs else (HS.GuardedRhss . pure . HS.GuardedRhs noLoc' tguards)) texp') Nothing
+                      pure $ HS.Alt tpat ((if null tguards then HS.UnGuardedRhs else (HS.GuardedRhss . pure . HS.GuardedRhs tguards)) texp') Nothing
                     ) (zip branches es')
   pure (HS.Case tof tbranches, M.findWithDefault ABS.TInfer "A'" bs)
 
@@ -300,7 +300,7 @@ tPureExp (ABS.EField var@(ABS.L (p, field))) = case M.lookup var ?fields of
                                                   Nothing -> errorPos p "no such field"
   
 tPureExp (ABS.ELit lit) = pure $ case lit of
-   ABS.LStr str -> (HS.ExpTypeSig noLoc' (HS.Lit $ HS.String str) (HS.TyCon (HS.UnQual $ HS.Ident "String")) -- type for OverloadedStrings disambiguate
+   ABS.LStr str -> (HS.ExpTypeSig (HS.Lit $ HS.String str) (HS.TyCon (HS.UnQual $ HS.Ident "String")) -- type for OverloadedStrings disambiguate
                    , ABS.TSimple $ ABS.U_ $ ABS.U ((0,0),"String"))
    ABS.LInt i -> (HS.Lit $ HS.Int i, ABS.TInfer)
    --(HS.ExpTypeSig noLoc' (HS.Lit $ HS.Int i) [ty|Int|], ABS.TSimple $ ABS.U_ $ ABS.U $ ((0,0),"Int"))
@@ -314,7 +314,7 @@ tPureExp (ABS.ELit lit) = pure $ case lit of
    ABS.LNull -> ([hs|(up' null)|], ABS.TInfer)
 
 mUpOne :: (?st :: SymbolTable) => ABS.T -> ABS.T -> HS.Exp -> HS.Exp
-mUpOne unified actual e = maybe e (\ info -> HS.ExpTypeSig noLoc'(HS.App (buildUp info) e) (tType unified)) (buildInfo unified actual)
+mUpOne unified actual e = maybe e (\ info -> HS.ExpTypeSig (HS.App (buildUp info) e) (tType unified)) (buildInfo unified actual)
 
 mUpMany :: (?st :: SymbolTable) => [ABS.T] -> [ABS.T] -> [HS.Exp] -> [HS.Exp]
 mUpMany = zipWith3 mUpOne

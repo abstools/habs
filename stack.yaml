@@ -3,8 +3,8 @@ packages:
   - '.'
   - 'habs-parser/'
   - 'habs-runtime/'
+  - 'haskell-src-exts-qq/'
 extra-deps:
-  - haskell-src-exts-qq-0.7
   - unagi-chan-0.4.0.0
   - genifunctors-0.4
 flags:

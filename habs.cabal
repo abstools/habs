@@ -10,7 +10,7 @@ homepage: http://abs-models.org
 bug-reports: https://github.com/abstools/habs/issues
 
 stability: provisional
-tested-with: GHC == 8.0.1, GHC == 8.0.2
+tested-with: GHC == 8.0.2, GHC == 8.2.2
 build-type: Simple
 cabal-version: >= 1.8
 
@@ -29,7 +29,7 @@ source-repository head
   branch: master
 
 executable habs
-  main-is: habs.hs         
+  main-is: habs.hs
   build-depends:
     -- base<=4.6 (i.e. GHC<=7.6.3) not supported because of no `tryReadMVar`
     -- base<=4.7 (i.e. GHC<=7.8.4) not supported because of generated code relies on PartialTypeSignatures
@@ -37,10 +37,9 @@ executable habs
     base >= 4.9 && < 5,
     habs-parser,
     -- for outputting a Haskell AST
-    haskell-src-exts >= 1.17.0 && < 1.18.0,
-    -- otherwise haskell-src-exts-qq does not build
-    haskell-src-meta < 0.7.0,
-    haskell-src-exts-qq == 0.7,
+    -- broken for 1.20, HSE introduces broken changes
+    haskell-src-exts-simple < 1.20,
+    haskell-src-exts-qq >= 0.8,
     -- for intermediate datastructures (e.g. symboltable)
     containers,
     -- for a Reader-monad to implement local scope
@@ -87,8 +86,8 @@ test-suite golden
     habs-runtime,
     habs-parser,
     -- for outputting a Haskell AST
-    haskell-src-exts >= 1.17.0,
-    haskell-src-exts-qq == 0.7,
+    haskell-src-exts-simple,
+    haskell-src-exts-qq >= 0.8,
     -- for intermediate datastructures (e.g. symboltable)
     containers,
     -- for a Reader-monad to implement local scope

@@ -10,12 +10,12 @@ module ABS.Compiler.Utils
     , lineQA
     , headToLower
     , errorPos, warnPos, showPos
-    , noLoc', mkLoc, mkLocFromQU, mkLocFromQA
+    --, noLoc', mkLoc, mkLocFromQU, mkLocFromQA
     , freshTyVar
     ) where
 
 import qualified ABS.AST as ABS
-import Language.Haskell.Exts.SrcLoc (SrcLoc (..))
+--import Language.Haskell.Exts.SrcLoc (SrcLoc (..))
 
 import Data.Char (toLower)
 import Debug.Trace (trace)
@@ -78,7 +78,7 @@ showPos :: (Int, Int) -> String
 showPos (row,col) = show row ++ ":" ++ show col
 
 -- | Empty source-location. Use instead of 'noLoc' which has problem when pretty-printing with LINE pragmas enabled.
-noLoc' :: SrcLoc
+{-noLoc' :: SrcLoc
 noLoc' = SrcLoc "<unknown>.hs" 1 1
 
 mkLocFromQU :: (?absFileName::String) => ABS.QU -> SrcLoc
@@ -90,6 +90,6 @@ mkLocFromQA qa = SrcLoc ?absFileName (lineQA qa) 1
 -- | from BNFC tokens' position
 mkLoc :: (?absFileName::String) => (Int,Int) -> SrcLoc
 mkLoc (line,column) = SrcLoc ?absFileName line column
-
+-}
 freshTyVar :: ABS.U
 freshTyVar = ABS.U ((0,0),"A'")

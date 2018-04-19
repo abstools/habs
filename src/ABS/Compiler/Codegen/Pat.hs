@@ -6,7 +6,7 @@ module ABS.Compiler.Codegen.Pat
 import ABS.Compiler.Codegen.Base
 import ABS.Compiler.Utils
 import qualified ABS.AST as ABS
-import qualified Language.Haskell.Exts as HS
+import qualified Language.Haskell.Exts.Simple as HS
 import Data.Map (member)
 import Control.Monad.Trans.Reader (ask)
 
