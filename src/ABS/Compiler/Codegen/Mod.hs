@@ -48,123 +48,146 @@ tModul (ABS.Module thisModuleQU exports imports decls maybeMain) allSymbolTables
     -- all other warnings are ignored
   , HS.OptionsPragma (Just HS.GHC) "-w -Werror -fforce-recomp -fwarn-missing-methods -fno-ignore-asserts"
   ]
-  -- fixed IMPORTS HEADER 
+  -- fixed IMPORTS HEADER
   ((if nostdlib cmdOpt
     then id
-    else 
-      (HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.StdLib"
-                     , HS.importQualified = False
-                     , HS.importAs = Nothing
-                     , HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
-                     } :)) 
-  ([ HS.ImportDecl { HS.importModule = HS.ModuleName "ABS.Runtime"
-                   , HS.importQualified = False
-                   , HS.importAs = Nothing
-                   , HS.importSrc = False, HS.importPkg = Nothing, HS.importSpecs = Nothing, HS.importSafe = False
-                   } 
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Function" 
-                  , HS.importQualified = False
-                  , HS.importAs = Nothing
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Symbol "."]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Applicative" 
-                  , HS.importQualified = False
-                  , HS.importAs = Nothing
-                  , HS.importSpecs =Just $ HS.ImportSpecList False [HS.IVar $ HS.Symbol "<*>", HS.IVar $ HS.Symbol "*>"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad" 
-                  , HS.importQualified = False
-                  , HS.importAs = Nothing
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Symbol "=<<"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Applicative" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "pure"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.IORef" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs =Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "newIORef", HS.IVar $ HS.Ident "readIORef", HS.IVar $ HS.Ident "writeIORef", HS.IVar $ HS.Ident "atomicModifyIORef'"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad.Trans.Class" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "lift"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Monad" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs =Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "Monad", HS.IVar $ HS.Ident "when", HS.IVar $ HS.Ident "sequence", HS.IVar $ HS.Ident "join"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Prelude" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
+    else
+      (HS.ImportDecl (HS.ModuleName "ABS.StdLib")
+                     False
+                     False
+                     False
+                     Nothing
+                     Nothing
+                     Nothing
+                     :))
+  ([ HS.ImportDecl (HS.ModuleName "ABS.Runtime")
+                     False
+                     False
+                     False
+                     Nothing
+                     Nothing
+                     Nothing
+  , HS.ImportDecl (HS.ModuleName "Data.Function" )
+                  False
+                  False
+                  False
+                  Nothing
+                  Nothing
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Symbol "."])
+  , HS.ImportDecl (HS.ModuleName "Control.Applicative")
+                  False
+                  False
+                  False
+                  Nothing
+                  Nothing
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Symbol "<*>", HS.IVar $ HS.Symbol "*>"])
+  , HS.ImportDecl (HS.ModuleName "Control.Monad")
+                  False
+                  False
+                  False
+                  Nothing
+                  Nothing
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Symbol "=<<"])
+
+  , HS.ImportDecl (HS.ModuleName "Control.Applicative")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "pure"])
+  , HS.ImportDecl (HS.ModuleName "Data.IORef")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "newIORef", HS.IVar $ HS.Ident "readIORef", HS.IVar $ HS.Ident "writeIORef", HS.IVar $ HS.Ident "atomicModifyIORef'"])
+  , HS.ImportDecl (HS.ModuleName "Control.Monad.Trans.Class")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "lift"])
+  , HS.ImportDecl (HS.ModuleName "Control.Monad")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "Monad", HS.IVar $ HS.Ident "when", HS.IVar $ HS.Ident "sequence", HS.IVar $ HS.Ident "join"])
+  , HS.ImportDecl (HS.ModuleName "Prelude")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
                   -- Ord and Show have to be IThingAll, so we can define custom instances
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "IO", HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "undefined", HS.IVar $ HS.Ident "error", HS.IVar $ HS.Ident "negate", HS.IVar $ HS.Ident "fromIntegral", HS.IVar $ HS.Ident "mapM_", HS.IVar $ HS.Ident "id"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Unsafe.Coerce" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "unsafeCoerce"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Concurrent" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "ThreadId"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Concurrent.MVar" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "isEmptyMVar", HS.IVar $ HS.Ident "readMVar"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Exception" 
-                  , HS.importQualified = False
-                  , HS.importAs = Nothing
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "assert"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Control.Exception" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs =Just $ HS.ImportSpecList False [HS.IThingAll $ HS.Ident "Exception", HS.IVar $ HS.Ident "SomeException", HS.IVar $ HS.Ident "throwTo", HS.IVar $ HS.Ident "throw"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Dynamic" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "toDyn", HS.IVar $ HS.Ident "fromDynamic"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Map.Lazy" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "lookup", HS.IVar $ HS.Ident "insert"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Web.Scotty" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "get", HS.IVar $ HS.Ident "param", HS.IVar $ HS.Ident "json", HS.IVar $ HS.Ident "raise"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
-  , HS.ImportDecl { HS.importModule = HS.ModuleName "Data.Generics.Genifunctors" 
-                  , HS.importQualified = True
-                  , HS.importAs = Just (HS.ModuleName "I'")
-                  , HS.importSpecs = Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "genFmap"]
-                  , HS.importSrc = False, HS.importSafe = False, HS.importPkg = Nothing
-                  }
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "IO", HS.IVar $ HS.Ident "Eq", HS.IThingAll $ HS.Ident "Ord", HS.IThingAll $ HS.Ident "Show", HS.IVar $ HS.Ident "undefined", HS.IVar $ HS.Ident "error", HS.IVar $ HS.Ident "negate", HS.IVar $ HS.Ident "fromIntegral", HS.IVar $ HS.Ident "mapM_", HS.IVar $ HS.Ident "id"])
+  , HS.ImportDecl (HS.ModuleName "Unsafe.Coerce")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "unsafeCoerce"])
+  , HS.ImportDecl (HS.ModuleName "Control.Concurrent")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "ThreadId"])
+  , HS.ImportDecl (HS.ModuleName "Control.Concurrent.MVar")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "isEmptyMVar", HS.IVar $ HS.Ident "readMVar"])
+  , HS.ImportDecl (HS.ModuleName "Control.Exception")
+                  False
+                  False
+                  False
+                  Nothing
+                  Nothing
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "assert"])
+  , HS.ImportDecl (HS.ModuleName "Control.Exception")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IThingAll $ HS.Ident "Exception", HS.IVar $ HS.Ident "SomeException", HS.IVar $ HS.Ident "throwTo", HS.IVar $ HS.Ident "throw"])
+  , HS.ImportDecl (HS.ModuleName "Data.Dynamic")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "toDyn", HS.IVar $ HS.Ident "fromDynamic"])
+  , HS.ImportDecl (HS.ModuleName "Data.Map.Lazy")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "lookup", HS.IVar $ HS.Ident "insert"])
+  , HS.ImportDecl (HS.ModuleName "Web.Scotty")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "get", HS.IVar $ HS.Ident "param", HS.IVar $ HS.Ident "json", HS.IVar $ HS.Ident "raise"])
+  , HS.ImportDecl (HS.ModuleName "Data.Generics.Genifunctors")
+                  True
+                  False
+                  False
+                  Nothing
+                  (Just $ HS.ModuleName "I'")
+                  (Just $ HS.ImportSpecList False [HS.IVar $ HS.Ident "genFmap"])
   ]
   -- TRANSLATED IMPORTS OF THE ABS-PROGRAM
   ++ concatMap tImport imports

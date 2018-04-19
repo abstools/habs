@@ -29,7 +29,7 @@ source-repository head
   branch: master
 
 executable habs
-  main-is: habs.hs         
+  main-is: habs.hs
   build-depends:
     -- base<=4.6 (i.e. GHC<=7.6.3) not supported because of no `tryReadMVar`
     -- base<=4.7 (i.e. GHC<=7.8.4) not supported because of generated code relies on PartialTypeSignatures
@@ -37,7 +37,7 @@ executable habs
     base >= 4.9 && < 5,
     habs-parser,
     -- for outputting a Haskell AST
-    haskell-src-exts-simple,
+    haskell-src-exts-simple < 1.20, -- broken for 1.20, HSE introduces broken changes
     haskell-src-exts-qq >= 0.8,
     -- for intermediate datastructures (e.g. symboltable)
     containers,

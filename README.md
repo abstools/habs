@@ -36,8 +36,8 @@ git submodule update --init
 
 cabal sandbox init
 cabal sandbox add-source habs-parser
-cabal sandbox add-source habs-stdlib
 cabal sandbox add-source habs-runtime
+cabal sandbox add-source haskell-src-exts-qq
 
 cabal update
 cabal install
