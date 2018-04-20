@@ -110,7 +110,7 @@ tDataInterfDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl
             (Just $ HS.CxSingle $ HS.ClassA (HS.UnQual $ HS.Ident (tname ++ "'")) [HS.TyVar $ HS.Ident "a"]) -- context
             (HS.IHCon (HS.UnQual $ HS.Ident "Sub'")
               `HS.IHApp`  
-              HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a")
+              (HS.TyParen $ HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a"))
               `HS.IHApp`
               (HS.TyCon $ HS.UnQual $ HS.Ident $ tname)))
             (Just [   -- the upcasting method
