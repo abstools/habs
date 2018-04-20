@@ -95,8 +95,8 @@ tDataInterfDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl
       : -- Eq instance for the wrapper
       HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.Qual (HS.ModuleName "I'") $ HS.Ident "Eq") `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident $ tname))
          (Just [HS.InsDecl $ HS.FunBind [HS.Match (HS.Symbol "==") 
-                                   [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref1'", HS.PWildCard]],
-                                    HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref2'", HS.PWildCard]]]
+                                   [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref1'", HS.PWildCard, HS.PWildCard]],
+                                    HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PApp (HS.UnQual $ HS.Ident "Obj'") [HS.PVar $ HS.Ident "ref2'", HS.PWildCard, HS.PWildCard]]]
                                     (HS.UnGuardedRhs [hs|ref1' == I'.unsafeCoerce ref2'|]) Nothing]])
 
        -- null class is an instance of any interface
@@ -110,7 +110,7 @@ tDataInterfDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl
             (Just $ HS.CxSingle $ HS.ClassA (HS.UnQual $ HS.Ident (tname ++ "'")) [HS.TyVar $ HS.Ident "a"]) -- context
             (HS.IHCon (HS.UnQual $ HS.Ident "Sub'")
               `HS.IHApp`  
-              HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a")
+              (HS.TyParen $ HS.TyApp (HS.TyCon $ HS.UnQual $ HS.Ident "Obj'") (HS.TyVar $ HS.Ident "a"))
               `HS.IHApp`
               (HS.TyCon $ HS.UnQual $ HS.Ident $ tname)))
             (Just [   -- the upcasting method
@@ -138,7 +138,7 @@ tDataInterfDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl
     generateSubForAllSupers :: (?st::SymbolTable) => [HS.Decl]
     generateSubForAllSupers = case M.lookup (SN tname Nothing) ?st of
                      Just (SV (Interface _ all_extends) _) -> map 
-                      (\ (SN sup _) -> HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.UnQual $ HS.Ident "Sub'") `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident sup)) -- instance Sub SubInterf SupInterf
+                      (\ (SN sup _) -> HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.UnQual $ HS.Ident "Sub'") `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident tname) `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident sup)) -- instance Sub SubInterf SupInterf
                        (Just [   -- the upcasting method is unwrapping and wrapping the data constructors
                           HS.InsDecl $ HS.FunBind $ [HS.Match (HS.Ident "up'") [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PVar $ HS.Ident "x'"]] 
                                                            (HS.UnGuardedRhs $ HS.App (HS.Con $ HS.UnQual $ HS.Ident sup)
