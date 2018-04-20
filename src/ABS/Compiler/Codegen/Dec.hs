@@ -138,7 +138,7 @@ tDataInterfDecl (ABS.DExtends (ABS.U (ipos,tname)) extends ms) = HS.ClassDecl
     generateSubForAllSupers :: (?st::SymbolTable) => [HS.Decl]
     generateSubForAllSupers = case M.lookup (SN tname Nothing) ?st of
                      Just (SV (Interface _ all_extends) _) -> map 
-                      (\ (SN sup _) -> HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.UnQual $ HS.Ident "Sub'") `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident sup)) -- instance Sub SubInterf SupInterf
+                      (\ (SN sup _) -> HS.InstDecl Nothing (HS.IRule Nothing Nothing $ HS.IHCon (HS.UnQual $ HS.Ident "Sub'") `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident tname) `HS.IHApp` HS.TyCon (HS.UnQual $ HS.Ident sup)) -- instance Sub SubInterf SupInterf
                        (Just [   -- the upcasting method is unwrapping and wrapping the data constructors
                           HS.InsDecl $ HS.FunBind $ [HS.Match (HS.Ident "up'") [HS.PApp (HS.UnQual $ HS.Ident tname) [HS.PVar $ HS.Ident "x'"]] 
                                                            (HS.UnGuardedRhs $ HS.App (HS.Con $ HS.UnQual $ HS.Ident sup)
