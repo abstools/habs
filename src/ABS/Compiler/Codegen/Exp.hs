@@ -66,15 +66,20 @@ tPureExp (ABS.ECase ofE branches) = do
 tPureExp (ABS.EFunCall ql args) = do
   (es,ts) <- unzip <$> mapM tPureExp args
   let ABS.L_ (ABS.L (_,funName))= ql
-  case M.lookup (SN funName Nothing) ?st of
-    Just (SV (Function tyvars declaredArgs declaredRes) _) -> do
+  case find (\ (SN ident' modul,_) -> funName == ident') (M.assocs ?st) of -- TODO: make it work with qualified functions
+  -- case M.lookup (SN funName Nothing) ?st of
+    Just (_, SV (Function tyvars declaredArgs declaredRes) _) -> do
       let bs = unifyMany tyvars declaredArgs ts
           instantArgs = instantiateMany bs declaredArgs
           instantRes = instantiateOne bs declaredRes
           es' = mUpMany instantArgs ts es
       pure (HS.Paren $ foldl HS.App
                           (HS.Var $ HS.UnQual $ HS.Ident funName)
-                          es', instantRes)          
+                          es', instantRes)
+    Just (_, SV Foreign _) ->
+      pure (HS.Paren $ foldl HS.App
+                          (HS.Var $ HS.UnQual $ HS.Ident funName)
+                          es, ABS.TInfer)
     _ -> error $ "cannot find function " ++ funName
 
 tPureExp (ABS.ENaryFunCall ql args) = 

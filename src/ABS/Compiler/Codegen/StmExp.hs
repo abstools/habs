@@ -68,9 +68,9 @@ tStmExp (ABS.ECase ofE branches) = do
 tStmExp (ABS.EFunCall (ABS.QL _ _) _args) = todo
 
 tStmExp (ABS.EFunCall (ABS.L_ (ABS.L (_,cid))) args) =  
-  -- case find (\ (SN ident' modul,_) -> cid == ident' && maybe False (not . snd) modul) (M.assocs ?st) of
-  case M.lookup (SN cid Nothing) ?st of
-    Just (SV Foreign _) -> if null args
+  case find (\ (SN ident' modul,_) -> cid == ident') (M.assocs ?st) of -- TODO: make it work with qualified functions
+  -- case M.lookup (SN cid Nothing) ?st of
+    Just (_, SV Foreign _) -> if null args
                              then pure ([hs|$(HS.Var $ HS.UnQual $ HS.Ident cid)|], ABS.TInfer)
                              else do 
                               nested <- foldlM
@@ -78,7 +78,7 @@ tStmExp (ABS.EFunCall (ABS.L_ (ABS.L (_,cid))) args) =
                                [hs|I'.pure $(HS.Var $ HS.UnQual $ HS.Ident cid)|]
                                args
                               pure ([hs|(I'.join ($nested))|], ABS.TInfer)
-    Just (SV (Function tyvars declaredArgs declaredRes) _) -> do
+    Just (_, SV (Function tyvars declaredArgs declaredRes) _) -> do
       (es,ts) <- unzip <$> mapM tStmExp args
       let bs = unifyMany tyvars declaredArgs ts
           instantArgs = instantiateMany bs declaredArgs
